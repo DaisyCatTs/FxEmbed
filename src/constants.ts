@@ -1,48 +1,46 @@
+/* Parse a comma-separated env var into a list of hosts.
+   Must filter empties: a plain `''.split(',')` yields `['']`, which has length 1 and so passes
+   every "is this feature configured?" guard, causing us to rewrite media URLs onto an empty host
+   (e.g. `https:///2/go?url=...`). An unconfigured list has to be genuinely empty. */
+const domainList = (value: string | undefined): string[] =>
+  (value ?? '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+
+/* First host of a list as an origin, or '' when the list is empty. */
+const firstOrigin = (value: string | undefined): string => {
+  const host = domainList(value)[0];
+  return host ? `https://${host}` : '';
+};
+
 export const Constants = {
   /* Populated from process.env (.env under Bun/Node, or each key inlined by esbuild for Workers). */
-  STANDARD_DOMAIN_LIST: (process.env.STANDARD_DOMAIN_LIST ?? '').split(','),
-  STANDARD_BSKY_DOMAIN_LIST: (process.env.STANDARD_BSKY_DOMAIN_LIST ?? '').split(','),
-  STANDARD_TIKTOK_DOMAIN_LIST: (process.env.STANDARD_TIKTOK_DOMAIN_LIST ?? '').split(','),
-  STANDARD_INSTAGRAM_DOMAIN_LIST: (process.env.STANDARD_INSTAGRAM_DOMAIN_LIST ?? '').split(','),
-  DIRECT_MEDIA_DOMAINS: (process.env.DIRECT_MEDIA_DOMAINS ?? '').split(','),
-  TEXT_ONLY_DOMAINS: (process.env.TEXT_ONLY_DOMAINS ?? '').split(','),
-  INSTANT_VIEW_DOMAINS: (process.env.INSTANT_VIEW_DOMAINS ?? '').split(','),
-  GALLERY_DOMAINS: (process.env.GALLERY_DOMAINS ?? '').split(','),
-  FORCE_MOSAIC_DOMAINS: (process.env.FORCE_MOSAIC_DOMAINS ?? '').split(','),
-  OLD_EMBED_DOMAINS: (process.env.OLD_EMBED_DOMAINS ?? '').split(','),
-  MOSAIC_DOMAIN_LIST: (process.env.MOSAIC_DOMAIN_LIST ?? '').split(','),
-  MOSAIC_BSKY_DOMAIN_LIST: (process.env.MOSAIC_BSKY_DOMAIN_LIST ?? '').split(','),
-  POLYGLOT_DOMAIN_LIST: (process.env.POLYGLOT_DOMAIN_LIST ?? '').split(','),
+  STANDARD_DOMAIN_LIST: domainList(process.env.STANDARD_DOMAIN_LIST),
+  STANDARD_BSKY_DOMAIN_LIST: domainList(process.env.STANDARD_BSKY_DOMAIN_LIST),
+  STANDARD_TIKTOK_DOMAIN_LIST: domainList(process.env.STANDARD_TIKTOK_DOMAIN_LIST),
+  STANDARD_INSTAGRAM_DOMAIN_LIST: domainList(process.env.STANDARD_INSTAGRAM_DOMAIN_LIST),
+  DIRECT_MEDIA_DOMAINS: domainList(process.env.DIRECT_MEDIA_DOMAINS),
+  TEXT_ONLY_DOMAINS: domainList(process.env.TEXT_ONLY_DOMAINS),
+  INSTANT_VIEW_DOMAINS: domainList(process.env.INSTANT_VIEW_DOMAINS),
+  GALLERY_DOMAINS: domainList(process.env.GALLERY_DOMAINS),
+  FORCE_MOSAIC_DOMAINS: domainList(process.env.FORCE_MOSAIC_DOMAINS),
+  OLD_EMBED_DOMAINS: domainList(process.env.OLD_EMBED_DOMAINS),
+  MOSAIC_DOMAIN_LIST: domainList(process.env.MOSAIC_DOMAIN_LIST),
+  MOSAIC_BSKY_DOMAIN_LIST: domainList(process.env.MOSAIC_BSKY_DOMAIN_LIST),
+  POLYGLOT_DOMAIN_LIST: domainList(process.env.POLYGLOT_DOMAIN_LIST),
   POLYGLOT_ACCESS_TOKEN: process.env.POLYGLOT_ACCESS_TOKEN ?? '',
-  API_HOST_LIST: (process.env.API_HOST_LIST ?? '').split(','),
-  API_HOST_ROOT: `https://${(process.env.API_HOST_LIST ?? '').split(',')[0]}`,
-  BLUESKY_API_HOST_LIST: (process.env.BLUESKY_API_HOST_LIST ?? '')
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean),
-  BLUESKY_API_HOST_ROOT: (() => {
-    const h = (process.env.BLUESKY_API_HOST_LIST ?? '')
-      .split(',')
-      .map(s => s.trim())
-      .filter(Boolean)[0];
-    return h ? `https://${h}` : '';
-  })(),
-  ATMOSPHERE_API_HOST_LIST: (process.env.ATMOSPHERE_API_HOST_LIST ?? '')
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean),
-  ATMOSPHERE_API_HOST_ROOT: (() => {
-    const h = (process.env.ATMOSPHERE_API_HOST_LIST ?? '')
-      .split(',')
-      .map(s => s.trim())
-      .filter(Boolean)[0];
-    return h ? `https://${h}` : '';
-  })(),
+  API_HOST_LIST: domainList(process.env.API_HOST_LIST),
+  API_HOST_ROOT: firstOrigin(process.env.API_HOST_LIST),
+  BLUESKY_API_HOST_LIST: domainList(process.env.BLUESKY_API_HOST_LIST),
+  BLUESKY_API_HOST_ROOT: firstOrigin(process.env.BLUESKY_API_HOST_LIST),
+  ATMOSPHERE_API_HOST_LIST: domainList(process.env.ATMOSPHERE_API_HOST_LIST),
+  ATMOSPHERE_API_HOST_ROOT: firstOrigin(process.env.ATMOSPHERE_API_HOST_LIST),
   RELEASE_NAME: process.env.RELEASE_NAME || 'local',
-  GIF_TRANSCODE_DOMAIN_LIST: (process.env.GIF_TRANSCODE_DOMAIN_LIST ?? '').split(','),
-  VIDEO_TRANSCODE_DOMAIN_LIST: (process.env.VIDEO_TRANSCODE_DOMAIN_LIST ?? '').split(','),
-  VIDEO_TRANSCODE_BSKY_DOMAIN_LIST: (process.env.VIDEO_TRANSCODE_BSKY_DOMAIN_LIST ?? '').split(','),
-  PBS_PROXY_DOMAIN_LIST: (process.env.PBS_PROXY_DOMAIN_LIST ?? '').split(','),
+  GIF_TRANSCODE_DOMAIN_LIST: domainList(process.env.GIF_TRANSCODE_DOMAIN_LIST),
+  VIDEO_TRANSCODE_DOMAIN_LIST: domainList(process.env.VIDEO_TRANSCODE_DOMAIN_LIST),
+  VIDEO_TRANSCODE_BSKY_DOMAIN_LIST: domainList(process.env.VIDEO_TRANSCODE_BSKY_DOMAIN_LIST),
+  PBS_PROXY_DOMAIN_LIST: domainList(process.env.PBS_PROXY_DOMAIN_LIST),
   API_DOCS_URL: `https://github.com/FxEmbed/FxEmbed/wiki/API-Home`,
   TWITTER_ROOT: process.env.TWITTER_ROOT || 'https://x.com',
   HORIZON_WEB_ROOT: 'https://app.fxtwitter.com',
@@ -97,7 +95,7 @@ export const Constants = {
     'Accept-Language': `en`
   },
   RESPONSE_HEADERS: {
-    'allow': 'OPTIONS, GET, PURGE, HEAD',
+    'allow': 'OPTIONS, GET, HEAD',
     'content-type': 'text/html;charset=UTF-8',
     'x-powered-by': `${process.env.RELEASE_NAME || 'local'}`,
     'x-trans-rights': 'true',

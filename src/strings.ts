@@ -1,20 +1,25 @@
 import { Constants } from './constants';
 
-declare global {
-  interface String {
-    format(options: { [find: string]: string }): string;
-  }
-}
-
-/* Useful little function to format strings for us */
-String.prototype.format = function (options: { [find: string]: string }) {
-  return this.replace(/{([^{}]+)}/g, (match: string, name: string) => {
-    if (options[name] !== undefined) {
-      return options[name];
-    }
-    return match;
-  });
-};
+/**
+ * Substitute `{name}` placeholders in a template.
+ *
+ * Replaces the old `String.prototype.format` monkey-patch. Two things changed:
+ *
+ *  - it is a plain function, so it cannot be reached accidentally on arbitrary strings, and
+ *  - substitution uses the *callback* form of `.replace`, so `$&`, `$'`, `` $` `` and `$1` inside a
+ *    substituted value are inert rather than being re-expanded as replacement patterns.
+ *
+ * It performs no escaping — templates that interpolate untrusted data must escape it themselves
+ * (see `src/render/html.ts` and `src/render/meta.ts`).
+ */
+export const interpolate = (template: string, vars: { [find: string]: string }): string =>
+  template.replace(/{([^{}]+)}/g, (match: string, name: string) =>
+    /* Own-property check so a placeholder named after something on Object.prototype
+       (`{constructor}`, `{toString}`) is left alone instead of stringifying a function. */
+    Object.prototype.hasOwnProperty.call(vars, name) && vars[name] !== undefined
+      ? vars[name]
+      : match
+  );
 
 /* Lots of strings! These are strings used in HTML or are shown to end users in embeds. */
 export const Strings = {
@@ -217,6 +222,11 @@ This may be caused by API downtime or a new bug. Try again in a little while." p
     'Post failed to load due to an API error. The account may be private or suspended, or there may be another issue :(',
   ERROR_PRIVATE: `Sorry, we can't embed this post because the user is private or suspended :(`,
   ERROR_TWEET_NOT_FOUND: `Sorry, that post doesn't exist :(`,
+  /* Shown when this instance has no X account credentials. In that state a gated post — age
+     restricted, NSFW, or otherwise login-only — is indistinguishable from a deleted one, because
+     X returns the same tombstone for both. Claiming "doesn't exist" is a guess, and a wrong one
+     often enough to send people hunting for a bug that isn't there. */
+  ERROR_TWEET_NEEDS_LOGIN: `Sorry, we can't load that post. It may be age-restricted, private, or deleted — this instance isn't signed in to X, so it can't tell which :(`,
   ERROR_BLUESKY_UNAVAILABLE: `We couldn't load this post from Bluesky. Try again in a moment or check https://status.bsky.app for updates.`,
   ERROR_USER_NOT_FOUND: `Sorry, that user doesn't exist :(`,
   ERROR_USER_SUSPENDED: `Sorry, that user is suspended :(`,

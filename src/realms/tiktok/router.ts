@@ -3,7 +3,6 @@ import { getBranding } from '../../helpers/branding';
 import { activityRequest } from './routes/activity';
 import { tiktokVideoRequest } from './routes/video';
 import { oembed } from './routes/oembed';
-import { tiktokVideoProxy, tiktokVideoProxyOptions } from './routes/proxy';
 import { trimTrailingSlash } from 'hono/trailing-slash';
 import {
   constructTikTokVideo,
@@ -18,9 +17,8 @@ tiktok.use(trimTrailingSlash());
 tiktok.get('/oembed', oembed);
 tiktok.get('/api/v1/statuses/:snowcode', activityRequest);
 
-// Video proxy for TikTok CDN videos that need proper headers/cookies
-tiktok.get('/proxy', tiktokVideoProxy);
-tiktok.options('/proxy', tiktokVideoProxyOptions);
+/* TikTok videos are delivered by the signed media endpoint at /_/m/:token (src/media/endpoint.ts).
+   The old /proxy took the URL and the cookies from query parameters, which made it an open proxy. */
 
 tiktok.get('/raw/:id', async c => {
   const { id } = c.req.param();

@@ -13,6 +13,16 @@ import {
 import { sendDiscordAlert } from './discord.js';
 import type { ProxyEnv } from '../../../types/proxy-credentials.js';
 
+import { NetPolicies, guardedFetch } from '../../../net/index.js';
+
+/* Outbound requests go through the shared guard: host allowlist, https-only,
+   redirect re-validation, timeout and a response size ceiling. */
+const xFetch = (input: string | URL | Request, init: RequestInit = {}) =>
+  guardedFetch(input, init, {
+    hostPolicy: NetPolicies.twitterApi,
+    signal: init.signal ?? undefined
+  });
+
 const redactUsername = false;
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -104,7 +114,7 @@ export async function proxyTwitterRequest(request: Request, env: ProxyEnv): Prom
 
       const newRequest = new Request(apiUrl, newRequestInit);
       const startTime = performance.now();
-      response = await fetch(newRequest);
+      response = await xFetch(newRequest);
       const endTime = performance.now();
       console.log(`Fetch completed in ${endTime - startTime}ms`);
 

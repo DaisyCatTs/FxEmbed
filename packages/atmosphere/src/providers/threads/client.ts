@@ -12,6 +12,16 @@ import {
 } from './constants.js';
 import { extractLsdFromHtml } from './extractors.js';
 
+import { NetPolicies, guardedFetch } from '../../net/index.js';
+
+/* Outbound requests go through the shared guard: host allowlist, https-only,
+   redirect re-validation, timeout and a response size ceiling. */
+const threadsFetch = (input: string | URL | Request, init: RequestInit = {}) =>
+  guardedFetch(input, init, {
+    hostPolicy: NetPolicies.threads,
+    signal: init.signal ?? undefined
+  });
+
 const DEFAULT_UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
@@ -53,7 +63,7 @@ export async function fetchThreadsSession(
 ): Promise<ThreadsSession | null> {
   try {
     const res = await withTimeout(signal =>
-      fetch(`${THREADS_ORIGIN}/`, {
+      threadsFetch(`${THREADS_ORIGIN}/`, {
         method: 'GET',
         redirect: 'follow',
         signal,
@@ -112,7 +122,7 @@ async function threadsGraphql(params: {
   });
   try {
     const res = await withTimeout(signal =>
-      fetch(`${THREADS_ORIGIN}/graphql/query`, {
+      threadsFetch(`${THREADS_ORIGIN}/graphql/query`, {
         method: 'POST',
         redirect: 'follow',
         signal,

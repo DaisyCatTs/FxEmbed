@@ -1,6 +1,7 @@
 import type { ResolvedBlueskyIdentity } from './types.js';
 import { fetchOAuthProtectedResourceMetadata } from './metadata.js';
 
+import { publicGuardedFetch } from '../../../net/index.js';
 function trimSlash(s: string): string {
   return s.replace(/\/$/, '');
 }
@@ -69,7 +70,7 @@ async function resolveHandleToDidViaPublicApi(
  */
 export async function resolveHandleToDid(
   handle: string,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = publicGuardedFetch
 ): Promise<string | null> {
   const h = handle.trim().replace(/^@/, '');
   if (!h || h.startsWith('did:')) return h.startsWith('did:') ? h : null;
@@ -132,7 +133,7 @@ function handleFromAlsoKnownAs(alsoKnownAs: string[] | undefined, did: string): 
 /** Resolve `did:plc:…` via plc.directory. */
 export async function resolveDidPlc(
   did: string,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = publicGuardedFetch
 ): Promise<{
   did: string;
   handle: string;
@@ -152,7 +153,7 @@ export async function resolveDidPlc(
 /** Resolve `did:web:…` via HTTPS did document. */
 export async function resolveDidWeb(
   did: string,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = publicGuardedFetch
 ): Promise<{
   did: string;
   handle: string;
@@ -189,7 +190,7 @@ async function resolveDidToPds(
  */
 export async function resolveBlueskyIdentity(
   handleOrDid: string,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = publicGuardedFetch
 ): Promise<ResolvedBlueskyIdentity> {
   const input = normalizeInput(handleOrDid);
   if (!input) throw new Error('resolveBlueskyIdentity: empty input');

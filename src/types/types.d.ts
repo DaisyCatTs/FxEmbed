@@ -3,6 +3,7 @@
    For Twitter GraphQL types, see packages/atmosphere/src/raw/vendor/twitter.d.ts */
 
 import type { Context } from 'hono';
+import type { MetaTag } from '../render/meta';
 
 export type InputFlags = {
   standard?: boolean;
@@ -29,7 +30,9 @@ declare global {
   }
 
   interface ResponseInstructions {
-    addHeaders: string[];
+    /* Structured tags, not markup: renderers describe what they want and `serializeMeta` is the
+       only thing that writes (and escapes) the actual HTML. */
+    addHeaders: MetaTag[];
     authorText?: string;
     siteName?: string;
     engagementText?: string;

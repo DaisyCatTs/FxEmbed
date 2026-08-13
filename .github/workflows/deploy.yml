@@ -73,20 +73,19 @@ jobs:
           INSTANT_VIEW_DOMAINS: ${{ vars.INSTANT_VIEW_DOMAINS }}
           GALLERY_DOMAINS: ${{ vars.GALLERY_DOMAINS }}
           FORCE_MOSAIC_DOMAINS: ${{ vars.FORCE_MOSAIC_DOMAINS }}
-          QUIET_DOMAINS: ${{ vars.QUIET_DOMAINS }}
           OLD_EMBED_DOMAINS: ${{ vars.OLD_EMBED_DOMAINS }}
-          MOSAIC_DOMAIN_LIST: ${{ vars.MOSAIC_DOMAIN_LIST }}
           POLYGLOT_DOMAIN_LIST: ${{ vars.POLYGLOT_DOMAIN_LIST }}
           POLYGLOT_ACCESS_TOKEN: ${{ secrets.POLYGLOT_ACCESS_TOKEN }}
-          MOSAIC_BSKY_DOMAIN_LIST: ${{ vars.MOSAIC_BSKY_DOMAIN_LIST }}
-          MEDIA_PROXY_DOMAIN_LIST: ${{ vars.MEDIA_PROXY_DOMAIN_LIST }}
-          GIF_TRANSCODE_DOMAIN_LIST: ${{ vars.GIF_TRANSCODE_DOMAIN_LIST }}
-          VIDEO_TRANSCODE_DOMAIN_LIST: ${{ vars.VIDEO_TRANSCODE_DOMAIN_LIST }}
-          VIDEO_TRANSCODE_BSKY_DOMAIN_LIST: ${{ vars.VIDEO_TRANSCODE_BSKY_DOMAIN_LIST }}
-          PBS_PROXY_DOMAIN_LIST: ${{ vars.PBS_PROXY_DOMAIN_LIST }}
-          API_HOST_LIST: ${{ vars.API_HOST_LIST }}
-          BLUESKY_API_HOST_LIST: ${{ vars.BLUESKY_API_HOST_LIST }}
-          ATMOSPHERE_API_HOST_LIST: ${{ vars.ATMOSPHERE_API_HOST_LIST }}
+          # Deliberately NOT passed: MOSAIC_DOMAIN_LIST, MOSAIC_BSKY_DOMAIN_LIST,
+          # GIF_TRANSCODE_DOMAIN_LIST, VIDEO_TRANSCODE_DOMAIN_LIST,
+          # VIDEO_TRANSCODE_BSKY_DOMAIN_LIST, PBS_PROXY_DOMAIN_LIST, API_HOST_LIST,
+          # BLUESKY_API_HOST_LIST, ATMOSPHERE_API_HOST_LIST.
+          #
+          # Each names an external microservice this deployment does not run. Pointing them at
+          # hosts that do not resolve is what broke image/GIF embedding. They are omitted here so
+          # a leftover GitHub repository variable cannot silently reintroduce that at deploy time.
+          # (QUIET_DOMAINS and MEDIA_PROXY_DOMAIN_LIST were also removed: neither has ever been
+          # read by src/constants.ts or esbuild.config.mjs.)
           TWITTER_ROOT: ${{ vars.TWITTER_ROOT }}
           INSTAGRAM_ROOT: ${{ vars.INSTAGRAM_ROOT }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}

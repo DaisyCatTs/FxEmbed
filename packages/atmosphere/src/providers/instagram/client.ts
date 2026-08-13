@@ -10,6 +10,16 @@ import {
 } from './constants.js';
 import { extractLsdFromHtml } from './extractors.js';
 
+import { NetPolicies, guardedFetch } from '../../net/index.js';
+
+/* Outbound requests go through the shared guard: host allowlist, https-only,
+   redirect re-validation, timeout and a response size ceiling. */
+const igFetch = (input: string | URL | Request, init: RequestInit = {}) =>
+  guardedFetch(input, init, {
+    hostPolicy: NetPolicies.instagram,
+    signal: init.signal ?? undefined
+  });
+
 const DEFAULT_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
@@ -66,7 +76,7 @@ export async function fetchInstagramCsrfToken(
 ): Promise<string | null> {
   try {
     const res = await withTimeout(signal =>
-      fetch(`${INSTAGRAM_ORIGIN}/`, {
+      igFetch(`${INSTAGRAM_ORIGIN}/`, {
         method: 'GET',
         redirect: 'follow',
         signal,
@@ -97,7 +107,7 @@ export async function fetchInstagramSession(
 ): Promise<InstagramSession | null> {
   try {
     const res = await withTimeout(signal =>
-      fetch(`${INSTAGRAM_ORIGIN}/`, {
+      igFetch(`${INSTAGRAM_ORIGIN}/`, {
         method: 'GET',
         redirect: 'follow',
         signal,
@@ -179,7 +189,7 @@ export async function fetchInstagramHtml(
       headers['Upgrade-Insecure-Requests'] = '1';
     }
     const res = await withTimeout(signal =>
-      fetch(`${INSTAGRAM_ORIGIN}${path.startsWith('/') ? path : `/${path}`}`, {
+      igFetch(`${INSTAGRAM_ORIGIN}${path.startsWith('/') ? path : `/${path}`}`, {
         method: 'GET',
         redirect: 'follow',
         signal,
@@ -213,7 +223,7 @@ export async function fetchRulingForContent(params: {
     url.searchParams.set('content_type', 'MEDIA');
     url.searchParams.set('target_id', params.mediaId);
     const res = await withTimeout(signal =>
-      fetch(url.toString(), {
+      igFetch(url.toString(), {
         method: 'GET',
         signal,
         headers: {
@@ -292,7 +302,7 @@ export async function fetchPolarisPostGraphql(params: {
       headers['X-CSRFToken'] = params.session.csrf;
     }
     const res = await withTimeout(signal =>
-      fetch(`${INSTAGRAM_ORIGIN}/api/graphql`, {
+      igFetch(`${INSTAGRAM_ORIGIN}/api/graphql`, {
         method: 'POST',
         signal,
         headers,
@@ -330,7 +340,7 @@ export async function fetchWebProfileInfo(
     const url = new URL(`${INSTAGRAM_ORIGIN}/api/v1/users/web_profile_info/`);
     url.searchParams.set('username', username);
     const res = await withTimeout(signal =>
-      fetch(url, {
+      igFetch(url, {
         method: 'GET',
         signal,
         headers: {
@@ -385,7 +395,7 @@ export async function fetchTimelineGraphqlPage(params: {
       headers['X-CSRFToken'] = params.csrfToken;
     }
     const res = await withTimeout(signal =>
-      fetch(url.toString(), {
+      igFetch(url.toString(), {
         method: 'GET',
         signal,
         headers
@@ -446,7 +456,7 @@ export async function fetchCommentPageGraphql(params: {
       headers['X-CSRFToken'] = params.csrfToken;
     }
     const res = await withTimeout(signal =>
-      fetch(`${INSTAGRAM_ORIGIN}/api/graphql`, {
+      igFetch(`${INSTAGRAM_ORIGIN}/api/graphql`, {
         method: 'POST',
         signal,
         headers,

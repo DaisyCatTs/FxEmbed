@@ -1,3 +1,4 @@
+import { mintMediaLink } from '../media-runtime.js';
 import { DataProvider } from '../../types/data-provider.js';
 import type { APIPhoto, APIUser, APIVideo, APIVideoFormat } from '../../types/api-schemas.js';
 import type { APITikTokStatus } from '../../types/api-status.js';
@@ -487,25 +488,27 @@ const extractMusic = (
 };
 
 /**
- * Generate a proxy URL for TikTok videos
- * This routes videos through our worker to add proper headers/cookies
+ * Route a TikTok video through our media endpoint, which attaches the headers and cookies the CDN
+ * demands.
+ *
+ * The URL and the cookies used to travel in query parameters, which made the endpoint an open
+ * proxy and published the cookies to anyone who read the embed. Both now ride inside a signed
+ * token. If the link cannot be signed — no signing key configured — the upstream URL is returned
+ * unchanged: TikTok will probably refuse it, but that is far better than emitting a link anyone
+ * could rewrite.
  */
-const generateProxyUrl = (
+const generateProxyUrl = async (
   videoUrl: string,
   cookies: string | null,
-  proxyBase: string,
-  videoId: string
-): string => {
-  const params = new URLSearchParams({ url: videoUrl });
-  if (cookies) {
-    params.set('cookies', cookies);
-  }
-  // Include videoId so proxy can fetch fresh data if URL fails
-  if (videoId) {
-    params.set('videoId', videoId);
-  }
-  return `${proxyBase}/proxy?${params.toString()}`;
-};
+  proxyBase: string
+): Promise<string> =>
+  (await mintMediaLink({
+    provider: 'tiktok',
+    url: videoUrl,
+    base: proxyBase,
+    credentials: cookies,
+    name: 'video.mp4'
+  })) ?? videoUrl;
 
 /**
  * Build API status object from TikTok video data
@@ -580,19 +583,21 @@ export const buildAPITikTokStatus = async (
         // Route through our proxy if a proxy base is provided
         // This ensures proper headers/cookies are sent to TikTok's CDN
         if (proxyBase) {
-          videoUrl = generateProxyUrl(videoUrl, cookies, proxyBase, videoId);
+          videoUrl = await generateProxyUrl(videoUrl, cookies, proxyBase);
         }
 
         // Build formats array with proxied URLs
-        const formats: APIVideoFormat[] = allVariants.map(v => ({
-          url: proxyBase ? generateProxyUrl(v.url, cookies, proxyBase, videoId) : v.url,
-          bitrate: v.bitrate,
-          container: v.container,
-          codec: v.codec,
-          size: v.size,
-          width: v.width,
-          height: v.height
-        }));
+        const formats: APIVideoFormat[] = await Promise.all(
+          allVariants.map(async v => ({
+            url: proxyBase ? await generateProxyUrl(v.url, cookies, proxyBase) : v.url,
+            bitrate: v.bitrate,
+            container: v.container,
+            codec: v.codec,
+            size: v.size,
+            width: v.width,
+            height: v.height
+          }))
+        );
 
         const videoMedia: APIVideo = {
           type: 'video',

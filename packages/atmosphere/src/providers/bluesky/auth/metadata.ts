@@ -1,5 +1,6 @@
 import type { AuthServerMetadata } from './types.js';
 
+import { publicGuardedFetch } from '../../../net/index.js';
 function trimOrigin(url: string): string {
   return url.replace(/\/$/, '');
 }
@@ -14,7 +15,7 @@ function isRecord(v: unknown): v is Record<string, unknown> {
  */
 export async function fetchAuthServerMetadata(
   authServerIssuer: string,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = publicGuardedFetch
 ): Promise<AuthServerMetadata> {
   const issuer = trimOrigin(authServerIssuer);
   const wellKnown = `${issuer}/.well-known/oauth-authorization-server`;
@@ -63,7 +64,7 @@ export async function fetchAuthServerMetadata(
  */
 export async function fetchOAuthProtectedResourceMetadata(
   pdsOrigin: string,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = publicGuardedFetch
 ): Promise<{ authorizationServers: string[]; resource?: string }> {
   const base = trimOrigin(pdsOrigin);
   const url = `${base}/.well-known/oauth-protected-resource`;

@@ -9,3 +9,4 @@ credentials.json
 credentials.complete.json
 credentials.enc.json
 .credential-key
+bun.lock

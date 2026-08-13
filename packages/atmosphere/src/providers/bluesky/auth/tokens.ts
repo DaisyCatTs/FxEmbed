@@ -8,6 +8,7 @@ import {
   responseRequestsDpopNonce
 } from './oauth-http.js';
 
+import { publicGuardedFetch } from '../../../net/index.js';
 export type TokenBundle = {
   accessToken: string;
   refreshToken: string;
@@ -90,7 +91,7 @@ export async function exchangeAuthorizationCode(params: {
   dpopNonce?: string;
   fetchImpl?: typeof fetch;
 }): Promise<TokenBundle> {
-  const fetchImpl = params.fetchImpl ?? fetch;
+  const fetchImpl = params.fetchImpl ?? publicGuardedFetch;
   const body: Record<string, string> = {
     grant_type: 'authorization_code',
     client_id: params.clientId,
@@ -125,7 +126,7 @@ export async function refreshBlueskyTokens(params: {
   fetchImpl?: typeof fetch;
 }): Promise<BlueskyAuthSession> {
   const { session } = params;
-  const fetchImpl = params.fetchImpl ?? fetch;
+  const fetchImpl = params.fetchImpl ?? publicGuardedFetch;
   const body: Record<string, string> = {
     grant_type: 'refresh_token',
     refresh_token: session.refreshToken,

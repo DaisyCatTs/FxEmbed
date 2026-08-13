@@ -14,6 +14,7 @@ import type {
 } from './types.js';
 import { BlueskyAuthError } from '../../../transports/errors.js';
 
+import { publicGuardedFetch } from '../../../net/index.js';
 /** Default read-oriented scopes for Bluesky OAuth (adjust if upstream rejects). */
 export const DEFAULT_BLUESKY_OAUTH_SCOPE = 'atproto transition:generic';
 
@@ -37,7 +38,7 @@ function randomBase64Url(bytes: number): string {
  * {@link BlueskyOAuthTransientState} and {@link BlueskyAuthSession}.
  */
 export function createBlueskyOAuthClient(params: CreateBlueskyOAuthClientParams) {
-  const fetchImpl = params.fetchImpl ?? fetch;
+  const fetchImpl = params.fetchImpl ?? publicGuardedFetch;
   const { redirectUri } = params;
 
   async function startAuthorization(loginHint?: string): Promise<AuthorizationStartResult> {

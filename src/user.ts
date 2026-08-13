@@ -1,25 +1,29 @@
 import { Context } from 'hono';
 import { Constants } from './constants';
-import { Strings } from './strings';
+import { interpolate, Strings } from './strings';
+import { MetaTag, serializeMeta } from './render/meta';
 import { userAPI } from '@fxembed/atmosphere/providers/twitter/profile';
 import { twitterBuildHostFromContext } from './providers/twitter/build-host-adapter';
 import { ContentfulStatusCode } from 'hono/utils/http-status';
 import { getBranding } from './helpers/branding';
 import { InputFlags } from './types/types';
 import { formatRuntime } from './helpers/runtime';
+import { ERROR_CACHE_CONTROL } from './caches';
 
 export const returnError = (c: Context, error: string): Response => {
   const branding = getBranding(c);
+  /* Same reasoning as the status embed's error page: a failure gets a short life at the edge. */
+  c.header('cache-control', ERROR_CACHE_CONTROL);
   return c.html(
-    Strings.BASE_HTML.format({
+    interpolate(Strings.BASE_HTML, {
       runtime: formatRuntime(),
       lang: '',
       body: '',
-      headers: [
-        `<meta property="og:title" content="${branding.name}"/>`,
-        `<meta property="og:description" content="${error}"/>`,
-        `<meta property="theme-color" content="${branding.color}"/>`
-      ].join('')
+      headers: serializeMeta([
+        { property: 'og:title', content: branding.name },
+        { property: 'og:description', content: error },
+        { property: 'theme-color', content: String(branding.color) }
+      ]).toString()
     })
   ) as Response;
 };
@@ -59,28 +63,39 @@ export const handleProfile = async (
   }
 
   /* Base headers included in all responses */
-  const headers = [`<meta property="twitter:site" content="@${user.screen_name}"/>`];
+  const headers: MetaTag[] = [{ property: 'twitter:site', content: `@${user.screen_name}` }];
 
   const branding = getBranding(c);
   const feedOrigin = new URL(c.req.url).origin;
   const enc = encodeURIComponent(username);
-  const linkTitle = `@${username} — ${branding.name}`.replace(/"/g, '&quot;');
-  headers.push(
-    `<link rel="alternate" type="application/rss+xml" title="${linkTitle}" href="${feedOrigin}/${enc}/feed.xml"/>`
-  );
-  headers.push(
-    `<link rel="alternate" type="application/atom+xml" title="${linkTitle}" href="${feedOrigin}/${enc}/feed.atom.xml"/>`
-  );
+  /* No hand-rolled quote escaping any more — serializeMeta escapes the title. */
+  const linkTitle = `@${username} — ${branding.name}`;
+  headers.push({
+    link: {
+      rel: 'alternate',
+      href: `${feedOrigin}/${enc}/feed.xml`,
+      type: 'application/rss+xml',
+      title: linkTitle
+    }
+  });
+  headers.push({
+    link: {
+      rel: 'alternate',
+      href: `${feedOrigin}/${enc}/feed.atom.xml`,
+      type: 'application/atom+xml',
+      title: linkTitle
+    }
+  });
 
   // TODO Add card creation logic here
   /* Finally, after all that work we return the response HTML! */
 
   return c.html(
-    Strings.BASE_HTML.format({
+    interpolate(Strings.BASE_HTML, {
       runtime: formatRuntime(),
       brandingName: branding.name,
       lang: `lang="en"`,
-      headers: headers.join(''),
+      headers: serializeMeta(headers).toString(),
       body: ''
     })
   );

@@ -1,6 +1,16 @@
 import { getBlueskyProviderEnv, getBlueskyProxyRuntime } from '../bluesky-runtime.js';
 import { getBlueskyAccessJwt, invalidateBlueskySession } from './session.js';
 
+import { NetPolicies, guardedFetch } from '../../net/index.js';
+
+/* Outbound requests go through the shared guard: host allowlist, https-only,
+   redirect re-validation, timeout and a response size ceiling. */
+const xrpcFetch = (input: string | URL | Request, init: RequestInit = {}) =>
+  guardedFetch(input, init, {
+    hostPolicy: NetPolicies.blueskyPds,
+    signal: init.signal ?? undefined
+  });
+
 /** Per-upstream request cap for public AppView (fail fast, then try proxy PDS). */
 export const BLUESKY_UPSTREAM_TIMEOUT_MS = 3_000;
 /** Authenticated PDS calls are often slower than bsky.app; use a higher cap so backup can succeed. */
@@ -62,7 +72,7 @@ async function fetchXrpcOnce<T>(
   try {
     const headers: Record<string, string> = { Accept: 'application/json' };
     if (options.authorization) headers['Authorization'] = options.authorization;
-    const res = await fetch(url, { signal: ac.signal, headers });
+    const res = await xrpcFetch(url, { signal: ac.signal, headers });
     const body = await res.text();
     if (!res.ok) {
       return { ok: false, status: res.status, body };

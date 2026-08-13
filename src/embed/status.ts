@@ -5,9 +5,11 @@ import icu from 'i18next-icu';
 import { Constants } from '../constants';
 import { handleQuote } from '../helpers/quote';
 import { isTombstone, withLocalizedTombstoneMessage } from '../helpers/tombstone';
-import { formatImageUrl, sanitizeText, truncateWithEllipsis } from '../helpers/utils';
+import { formatImageUrl, truncateWithEllipsis } from '../helpers/utils';
 import { proxyTwitterPostPhotoUrl, shouldProxyTelegramPbsPhotos } from '../helpers/pbsProxy';
-import { Strings } from '../strings';
+import { interpolate, Strings } from '../strings';
+import { MetaTag, safeMetaUrl, serializeMeta } from '../render/meta';
+import { escapeAttr, Html, raw } from '../render/html';
 import { getSocialProof } from '../helpers/socialproof';
 import { renderPhoto } from '../render/photo';
 import { renderVideo } from '../render/video';
@@ -20,6 +22,8 @@ import { constructBlueskyThread } from '@fxembed/atmosphere/providers/bluesky/co
 import { blueskyBuildHostFromContext } from '../providers/bluesky/build-host-adapter';
 import { DataProvider } from '../enum';
 import { encodeSnowcode } from '../helpers/snowcode';
+import { hasBundledEncryptedCredentials } from '../providers/twitter/proxy/credentials';
+import { ACTIVITY_PROVIDER_MARKERS } from '../routing/identify';
 import { getBranding } from '../helpers/branding';
 import type { APIStatusTombstone, APITwitterStatus } from '../realms/api/schemas';
 import type { APIStatus, SocialThread } from '../types/apiStatus';
@@ -30,6 +34,7 @@ import { constructTikTokVideo } from '@fxembed/atmosphere/providers/tiktok/conve
 import { constructInstagramPost } from '@fxembed/atmosphere/providers/instagram/post';
 import { InputFlags } from '../types/types';
 import { formatRuntime } from '../helpers/runtime';
+import { ERROR_CACHE_CONTROL } from '../caches';
 
 /**
  * Check if the tweet text is essentially just an article URL with no meaningful additional content.
@@ -69,17 +74,20 @@ const isArticleOnlyTweet = (status: APITwitterStatus): boolean => {
 export const returnError = (c: Context, error: string): Response => {
   const branding = getBranding(c);
   console.log('branding', JSON.stringify(branding));
+  /* A failure is usually transient upstream state, so it gets a short life at the edge instead of
+     the freshness a real embed gets. */
+  c.header('cache-control', ERROR_CACHE_CONTROL);
   return c.html(
-    Strings.BASE_HTML.format({
+    interpolate(Strings.BASE_HTML, {
       runtime: formatRuntime(),
       brandingName: branding.name,
       body: '',
       lang: '',
-      headers: [
-        `<meta property="og:title" content="${branding.name}"/>`,
-        `<meta property="og:description" content="${error}"/>`,
-        `<meta property="theme-color" content="${branding.color}"/>`
-      ].join('')
+      headers: serializeMeta([
+        { property: 'og:title', content: branding.name },
+        { property: 'og:description', content: error },
+        { property: 'theme-color', content: String(branding.color) }
+      ]).toString()
     })
   ) as Response;
 };
@@ -212,7 +220,15 @@ export const handleStatus = async (
         thread.code === 404 ? Strings.ERROR_TWEET_NOT_FOUND : Strings.ERROR_BLUESKY_UNAVAILABLE
       );
     } else {
-      return returnError(c, Strings.ERROR_TWEET_NOT_FOUND);
+      /* Without credentials, X answers with the same tombstone for a deleted post and for one it
+         simply will not serve anonymously, so we genuinely cannot tell them apart. Say that,
+         rather than asserting the post is gone. */
+      return returnError(
+        c,
+        hasBundledEncryptedCredentials()
+          ? Strings.ERROR_TWEET_NOT_FOUND
+          : Strings.ERROR_TWEET_NEEDS_LOGIN
+      );
     }
   }
 
@@ -323,7 +339,10 @@ export const handleStatus = async (
               : getVideoTranscodeDomainBluesky(status.author.id);
           redirectUrl = `https://${domain}${new URL(redirectUrl).pathname}`;
         } else if (
-          experimentCheck(Experiment.VIDEO_REDIRECT_WORKAROUND, !!Constants.API_HOST_LIST) &&
+          experimentCheck(
+            Experiment.VIDEO_REDIRECT_WORKAROUND,
+            Constants.API_HOST_LIST.length > 0
+          ) &&
           status.provider !== DataProvider.TikTok &&
           status.provider !== DataProvider.Instagram
         ) {
@@ -370,7 +389,7 @@ export const handleStatus = async (
   let newText = status.text;
 
   /* Base headers included in all responses */
-  const headers = [];
+  const headers: MetaTag[] = [];
 
   const twitterPublicStatusUrl = flags?.horizon
     ? `${Constants.HORIZON_WEB_ROOT}/${status.author.screen_name}/status/${status.id}`
@@ -381,30 +400,36 @@ export const handleStatus = async (
   const instagramPublicStatusUrl =
     status.url || `${Constants.INSTAGRAM_ROOT}/p/${encodeURIComponent(status.id)}/`;
 
+  /* Emit the canonical/og:url pair only when the URL is a well-formed https URL. A malformed one
+     used to be interpolated straight into href="..." / content="...". */
+  const pushCanonical = (url: string) => {
+    const safe = safeMetaUrl(url);
+    if (safe) {
+      headers.push(
+        { link: { rel: 'canonical', href: safe } },
+        { property: 'og:url', content: safe }
+      );
+    }
+  };
+
   if (status.provider === DataProvider.Twitter) {
+    pushCanonical(twitterPublicStatusUrl);
     headers.push(
-      `<link rel="canonical" href="${twitterPublicStatusUrl}"/>`,
-      `<meta property="og:url" content="${twitterPublicStatusUrl}"/>`,
-      `<meta property="twitter:site" content="@${status.author.screen_name}"/>`,
-      `<meta property="twitter:creator" content="@${status.author.screen_name}"/>`
+      { property: 'twitter:site', content: `@${status.author.screen_name}` },
+      { property: 'twitter:creator', content: `@${status.author.screen_name}` }
     );
   } else if (status.provider === DataProvider.Bluesky) {
-    headers.push(
-      `<link rel="canonical" href="${bskyPublicStatusUrl}"/>`,
-      `<meta property="og:url" content="${bskyPublicStatusUrl}"/>`
-    );
+    pushCanonical(bskyPublicStatusUrl);
   } else if (status.provider === DataProvider.Instagram) {
-    headers.push(
-      `<link rel="canonical" href="${instagramPublicStatusUrl}"/>`,
-      `<meta property="og:url" content="${instagramPublicStatusUrl}"/>`
-    );
+    pushCanonical(instagramPublicStatusUrl);
   }
 
   if (!flags.gallery) {
-    headers.push(`<meta property="theme-color" content="${getBranding(c).color}"/>`);
-    headers.push(
-      `<meta property="twitter:title" content="${status.author.name} (@${status.author.screen_name})"/>`
-    );
+    headers.push({ property: 'theme-color', content: String(getBranding(c).color) });
+    headers.push({
+      property: 'twitter:title',
+      content: `${status.author.name} (@${status.author.screen_name})`
+    });
   }
 
   /* This little thing ensures if by some miracle our embed is loaded in a browser,
@@ -412,12 +437,17 @@ export const handleStatus = async (
 
      Telegram is dumb and it just gets stuck if this is included, so we never include it for Telegram UAs. */
   if (!isTelegram) {
-    if (provider === DataProvider.Twitter) {
-      headers.push(`<meta http-equiv="refresh" content="0;url=${twitterPublicStatusUrl}"/>`);
-    } else if (provider === DataProvider.Bluesky) {
-      headers.push(`<meta http-equiv="refresh" content="0;url=${bskyPublicStatusUrl}"/>`);
-    } else if (provider === DataProvider.Instagram) {
-      headers.push(`<meta http-equiv="refresh" content="0;url=${instagramPublicStatusUrl}"/>`);
+    const refreshTarget =
+      provider === DataProvider.Twitter
+        ? twitterPublicStatusUrl
+        : provider === DataProvider.Bluesky
+          ? bskyPublicStatusUrl
+          : provider === DataProvider.Instagram
+            ? instagramPublicStatusUrl
+            : null;
+    const safeRefreshTarget = refreshTarget ? safeMetaUrl(refreshTarget) : null;
+    if (safeRefreshTarget) {
+      headers.push({ httpEquiv: 'refresh', content: `0;url=${safeRefreshTarget}` });
     }
   }
 
@@ -447,8 +477,8 @@ export const handleStatus = async (
   if ((status as APITwitterStatus).translation) {
     const { translation } = status as APITwitterStatus;
 
-    const formatText = `📑 {translation}`.format({
-      translation: i18next.t('translatedFrom').format({
+    const formatText = interpolate(`📑 {translation}`, {
+      translation: interpolate(i18next.t('translatedFrom'), {
         language: i18next.t(`language_${translation?.source_lang}`)
       })
     });
@@ -533,15 +563,38 @@ export const handleStatus = async (
       if (instructions.siteName) {
         siteName = instructions.siteName;
       }
-    } else if (media?.mosaic) {
-      if (userAgent.match(Constants.NATIVE_MULTI_IMAGE_UA_REGEX) && !flags.forceMosaic) {
-        const photos = media?.photos || [];
+    } else if (media?.photos?.length) {
+      const photos = media.photos;
+
+      /* A mosaic is a single pre-composited image standing in for several photos, produced by an
+         external service. It only ever helped clients that render one image, so use it only when
+         one exists AND the client cannot show several itself. Otherwise emit every photo as its
+         own og:image — clients that support multiple images (Discord) show them all, and clients
+         that don't take the first. Previously this fell through to a branch that rendered only
+         photos[0], so with no mosaic configured a four-image post embedded as one image. */
+      const useMosaic =
+        media.mosaic &&
+        (flags.forceMosaic || !userAgent.match(Constants.NATIVE_MULTI_IMAGE_UA_REGEX));
+
+      if (useMosaic && media.mosaic) {
+        const instructions = renderPhoto(
+          {
+            context: c,
+            status: status as APIStatus,
+            authorText: authorText,
+            engagementText: engagementText,
+            userAgent: userAgent
+          },
+          media.mosaic
+        );
+        headers.push(...instructions.addHeaders);
+      } else {
+        if (photos.length > 1) {
+          /* Override the card type so multiple images render as a gallery rather than a player */
+          status.embed_card = 'summary_large_image';
+        }
 
         photos.forEach(photo => {
-          /* Override the card type */
-          status.embed_card = 'summary_large_image';
-          console.log('set embed_card to summary_large_image');
-
           const instructions = renderPhoto(
             {
               context: c,
@@ -554,48 +607,27 @@ export const handleStatus = async (
           );
           headers.push(...instructions.addHeaders);
         });
-      } else {
-        const instructions = renderPhoto(
-          {
-            context: c,
-            status: status as APIStatus,
-            authorText: authorText,
-            engagementText: engagementText,
-            userAgent: userAgent
-          },
-          media.mosaic
-        );
-        headers.push(...instructions.addHeaders);
       }
-    } else if (media?.photos) {
-      console.log('photos', media?.photos);
-      const instructions = renderPhoto(
-        {
-          context: c,
-          status: status as APIStatus,
-          authorText: authorText,
-          engagementText: engagementText,
-          userAgent: userAgent
-        },
-        media.photos[0]
-      );
-      headers.push(...instructions.addHeaders);
     }
     if (status.media?.external && !status.media.videos?.length) {
       const { external } = status.media;
       authorText = newText || '';
-      headers.push(
-        `<meta property="twitter:player" content="${external.url}">`,
-        `<meta property="twitter:player:width" content="${external.width}">`,
-        `<meta property="twitter:player:height" content="${external.height}">`,
-        `<meta property="og:type" content="video.other">`,
-        `<meta property="og:video:url" content="${external.url}">`,
-        `<meta property="og:video:secure_url" content="${external.url}">`,
-        `<meta property="og:video:width" content="${external.width}">`,
-        `<meta property="og:video:height" content="${external.height}">`
-      );
-      if (external.thumbnail_url && !status.media.photos?.length) {
-        headers.push(`<meta property="og:image" content="${external.thumbnail_url}">`);
+      const externalUrl = safeMetaUrl(external.url);
+      if (externalUrl) {
+        headers.push(
+          { property: 'twitter:player', content: externalUrl },
+          { property: 'twitter:player:width', content: String(external.width) },
+          { property: 'twitter:player:height', content: String(external.height) },
+          { property: 'og:type', content: 'video.other' },
+          { property: 'og:video:url', content: externalUrl },
+          { property: 'og:video:secure_url', content: externalUrl },
+          { property: 'og:video:width', content: String(external.width) },
+          { property: 'og:video:height', content: String(external.height) }
+        );
+      }
+      const externalThumbnail = safeMetaUrl(external.thumbnail_url);
+      if (externalThumbnail && !status.media.photos?.length) {
+        headers.push({ property: 'og:image', content: externalThumbnail });
       }
     }
   }
@@ -668,34 +700,42 @@ export const handleStatus = async (
     // Check if we have an article with cover media to use instead
     if (articleOnly && twitterStatus.article?.cover_media?.media_info?.__typename === 'ApiImage') {
       const coverImage = twitterStatus.article.cover_media.media_info as TwitterApiImage;
-      const coverUrl = proxyTwitterPostPhotoUrl(
-        coverImage.original_img_url,
-        shouldProxyTelegramPbsPhotos(isTelegram)
+      const coverUrl = safeMetaUrl(
+        proxyTwitterPostPhotoUrl(
+          coverImage.original_img_url,
+          shouldProxyTelegramPbsPhotos(isTelegram)
+        )
       );
-      headers.push(
-        `<meta property="og:image" content="${coverUrl}"/>`,
-        `<meta property="og:image:width" content="${coverImage.original_img_width}"/>`,
-        `<meta property="og:image:height" content="${coverImage.original_img_height}"/>`
-      );
+      if (coverUrl) {
+        headers.push(
+          { property: 'og:image', content: coverUrl },
+          { property: 'og:image:width', content: String(coverImage.original_img_width) },
+          { property: 'og:image:height', content: String(coverImage.original_img_height) }
+        );
+      }
       if (!useIV) {
-        headers.push(`<meta property="twitter:image" content="0"/>`);
+        headers.push({ property: 'twitter:image', content: '0' });
       }
       // Update embed card type to show large image
       status.embed_card = 'summary_large_image';
     } else {
       /* Use a slightly higher resolution image for profile pics */
+      const safeAvatar = safeMetaUrl(avatar);
       if (!useIV) {
-        headers.push(
-          `<meta property="og:image" content="${avatar}"/>`,
-          `<meta property="twitter:image" content="0"/>`
-        );
-      } else {
-        headers.push(`<meta property="twitter:image" content="${avatar}"/>`);
+        if (safeAvatar) {
+          headers.push({ property: 'og:image', content: safeAvatar });
+        }
+        headers.push({ property: 'twitter:image', content: '0' });
+      } else if (safeAvatar) {
+        headers.push({ property: 'twitter:image', content: safeAvatar });
       }
     }
   }
 
-  headers.push(`<link rel="apple-touch-icon" href="${avatar}"/>`);
+  const safeAvatarIcon = safeMetaUrl(avatar);
+  if (safeAvatarIcon) {
+    headers.push({ link: { rel: 'apple-touch-icon', href: safeAvatarIcon } });
+  }
 
   /* For supporting Telegram IV, we have to replace newlines with <br> within the og:description <meta> tag because of its weird (undocumented?) behavior.
      If you don't use IV, it uses newlines just fine. Just like Discord and others. But with IV, suddenly newlines don't actually break the line anymore.
@@ -705,13 +745,17 @@ export const handleStatus = async (
      
      A possible explanation for this weird behavior is due to the Medium template we are forced to use because Telegram IV is not an open platform
      and we have to pretend to be Medium in order to get working IV, but haven't figured if the template is causing issues.  */
-  let text = useIV ? sanitizeText(newText).replace(/\n/g, '<br>') : sanitizeText(newText);
+  /* raw() #2: Telegram IV only honours line breaks in og:description when the attribute contains
+     literal <br> markup, so the text is escaped FIRST and the <br> spliced into the already-escaped
+     result. Nothing user-controlled survives unescaped, and escapeAttr never emits a newline, so
+     the replace cannot touch anything it introduced. */
+  let text: string | Html = useIV ? raw(escapeAttr(newText).replace(/\n/g, '<br>')) : newText;
 
   // For article-only tweets, use article title and preview text
-  let ogTitle = `${status.author.name} (@${status.author.screen_name})`;
+  let ogTitle: string | Html = `${status.author.name} (@${status.author.screen_name})`;
   if (articleOnly && twitterStatus.article && isTelegram) {
-    ogTitle = sanitizeText(twitterStatus.article.title);
-    text = sanitizeText(twitterStatus.article.preview_text);
+    ogTitle = twitterStatus.article.title;
+    text = twitterStatus.article.preview_text;
   }
 
   const useCard =
@@ -721,40 +765,36 @@ export const handleStatus = async (
         : 'summary'
       : status.embed_card;
 
-  headers.push(`<meta property="twitter:card" content="${useCard}"/>`);
+  headers.push({ property: 'twitter:card', content: String(useCard) });
 
   /* Push basic headers relating to author, Tweet text, and site name */
   if (!flags.gallery) {
     headers.push(
-      `<meta property="og:title" content="${ogTitle}"/>`,
-      `<meta property="og:description" content="${text}"/>`
+      { property: 'og:title', content: ogTitle },
+      { property: 'og:description', content: text }
     );
-    if (!useActivity) {
-      headers.push(`<meta property="og:site_name" content="${siteName}"/>`);
-    } else {
-      headers.push(`<meta property="og:site_name" content="${originalSiteName}"/>`);
-    }
+    headers.push({
+      property: 'og:site_name',
+      content: !useActivity ? siteName : originalSiteName
+    });
   } else {
-    if (isTelegram) {
-      headers.push(
-        `<meta property="og:site_name" content="${status.author.name} (@${status.author.screen_name})"/>`
-      );
-    } else {
-      headers.push(
-        `<meta property="og:title" content="${status.author.name} (@${status.author.screen_name})"/>`
-      );
-    }
+    const galleryAuthor = `${status.author.name} (@${status.author.screen_name})`;
+    headers.push(
+      isTelegram
+        ? { property: 'og:site_name', content: galleryAuthor }
+        : { property: 'og:title', content: galleryAuthor }
+    );
   }
 
   /* Special reply handling if authorText is not overriden */
   if (status.replying_to && authorText === Strings.DEFAULT_AUTHOR_TEXT) {
-    authorText = `↪ ${i18next.t('replyingTo').format({ screen_name: status.replying_to.screen_name })}`;
+    authorText = `↪ ${interpolate(i18next.t('replyingTo'), { screen_name: status.replying_to.screen_name })}`;
     /* We'll assume it's a thread if it's a reply to themselves */
   } else if (
     status.replying_to?.screen_name === status.author.screen_name &&
     authorText === Strings.DEFAULT_AUTHOR_TEXT
   ) {
-    authorText = `↪ ${i18next.t('threadPartHeader').format({ screen_name: status.author.screen_name })}`;
+    authorText = `↪ ${interpolate(i18next.t('threadPartHeader'), { screen_name: status.author.screen_name })}`;
   }
 
   if (!flags.gallery) {
@@ -794,30 +834,42 @@ export const handleStatus = async (
         icon = icons?.['default'];
       }
       const iconType = size === 'svg' ? 'image/svg+xml' : 'image/png';
-      if (icon) {
-        headers.push(`<link href='${icon}' rel='icon' sizes='${size}x${size}' type='${iconType}'>`);
+      const iconHref = safeMetaUrl(icon);
+      if (iconHref) {
+        headers.push({
+          link: { rel: 'icon', href: iconHref, sizes: `${size}x${size}`, type: iconType }
+        });
       }
     }
 
-    headers.push(
-      `<link rel="alternate" href="{base}/owoembed?text={text}&status={status}&author={author}{provider}" type="application/json+oembed" title="{name}">`.format(
-        {
-          base: `https://${getBranding(c).domains[0]}`,
-          text: flags.gallery
-            ? status.author.name
-            : encodeURIComponent(truncateWithEllipsis(authorText, 255)),
-          status: encodeURIComponent(statusId),
-          author: encodeURIComponent(status.author.screen_name || ''),
-          name: status.author.name || '',
-          provider: provider ? `&provider=${encodeURIComponent(provider)}` : ''
-        }
-      )
+    const oembedHref = interpolate(
+      `{base}/owoembed?text={text}&status={status}&author={author}{provider}`,
+      {
+        base: `https://${getBranding(c).domains[0]}`,
+        text: flags.gallery
+          ? status.author.name
+          : encodeURIComponent(truncateWithEllipsis(authorText, 255)),
+        status: encodeURIComponent(statusId),
+        author: encodeURIComponent(status.author.screen_name || ''),
+        provider: provider ? `&provider=${encodeURIComponent(provider)}` : ''
+      }
     );
+
+    headers.push({
+      link: {
+        rel: 'alternate',
+        href: oembedHref,
+        type: 'application/json+oembed',
+        /* Fully user-controlled; previously interpolated raw into title="...". */
+        title: status.author.name || ''
+      }
+    });
   }
 
   if (useActivity) {
     const data: {
       i: string;
+      v?: string;
       l?: string;
       h?: string;
       p?: string;
@@ -827,6 +879,16 @@ export const handleStatus = async (
     } = {
       i: statusId
     };
+
+    /* Which provider this activity belongs to. The activity endpoint is one path shared by every
+       provider; it used to be disambiguated by hostname, which no longer exists on a
+       single-domain deployment. Omitted for X so existing snowcodes stay valid — the router
+       treats an absent marker as X. See src/routing/identify.ts. */
+    const providerMarker = ACTIVITY_PROVIDER_MARKERS[status.provider];
+    if (providerMarker) {
+      data.v = providerMarker;
+    }
+
     /* Convert necessary flags into snowcode data */
     if (language !== status.lang) {
       data.l = language;
@@ -858,22 +920,12 @@ export const handleStatus = async (
       }
     }
     console.log('snowflake', snowflake);
-    let base: string;
-    switch (status.provider) {
-      case DataProvider.Bluesky:
-        base = Constants.STANDARD_BSKY_DOMAIN_LIST[0];
-        break;
-      case DataProvider.TikTok:
-        base = Constants.STANDARD_TIKTOK_DOMAIN_LIST[0];
-        break;
-      case DataProvider.Instagram:
-        base = Constants.STANDARD_INSTAGRAM_DOMAIN_LIST[0];
-        break;
-      default:
-        base = Constants.STANDARD_DOMAIN_LIST[0];
-        break;
-    }
 
+    /* The activity link always points back at the host that served this page. The previous
+       per-provider lookup of a configured domain was dead code — it was overwritten by the
+       request hostname on the very next line — and with those lists now empty it would have
+       produced `https://undefined/...`. */
+    let base = '';
     try {
       base = new URL(c.req.url).hostname;
     } catch (e) {
@@ -881,15 +933,17 @@ export const handleStatus = async (
     }
 
     /* Convince Discord that you are actually a Mastodon link lol */
-    headers.push(
-      `<link href='{base}/users/{author}/statuses/{status}' rel='alternate' type='application/activity+json'>`.format(
-        {
+    headers.push({
+      link: {
+        rel: 'alternate',
+        href: interpolate(`{base}/users/{author}/statuses/{status}`, {
           base: `https://${base}`,
           author: encodeURIComponent(status.author.screen_name || ''),
           status: snowflake
-        }
-      )
-    );
+        }),
+        type: 'application/activity+json'
+      }
+    });
   }
 
   /* When dealing with a Tweet of unknown lang, fall back to en */
@@ -897,10 +951,10 @@ export const handleStatus = async (
 
   /* Finally, after all that work we return the response HTML! */
   return c.html(
-    Strings.BASE_HTML.format({
+    interpolate(Strings.BASE_HTML, {
       runtime: formatRuntime(),
-      lang: `lang="${lang}"`,
-      headers: headers.join(''),
+      lang: `lang="${escapeAttr(lang)}"`,
+      headers: serializeMeta(headers).toString(),
       body: ivbody
     }).replace(/>(\s+)</gm, '><')
   );

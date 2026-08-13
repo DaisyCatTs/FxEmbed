@@ -1,10 +1,15 @@
-export const sanitizeText = (text: string) => {
-  return text
-    .replace(/"/g, '&#34;')
-    .replace(/'/g, '&#39;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-};
+import { escapeAttr } from '../render/html';
+
+/**
+ * @deprecated Prefer `escapeAttr`/`escapeText` from `src/render/html.ts`, or better, let
+ * `serializeMeta` do the escaping. This alias remains for the Instant View / article renderers,
+ * which build HTML bodies by string concatenation.
+ *
+ * It used to escape `"'<>` but *not* `&`, which meant upstream text containing a literal `&#34;`
+ * passed through unchanged and the HTML parser decoded it back into a real `"`, escaping the
+ * surrounding attribute. It now delegates to `escapeAttr`, which escapes `&` first.
+ */
+export const sanitizeText = (text: string) => escapeAttr(text);
 
 export const unescapeText = (text: string) => {
   return text
@@ -101,6 +106,12 @@ export const formatImageUrl = (url: string, name = 'orig') => {
  * This prevents IV generation failures due to external site issues.
  */
 export const wrapForeignLinks = (url: string, apiHost: string): string => {
+  /* Without an API host there is no redirector to wrap through; link directly rather than
+     emitting `https://undefined/2/hit?url=`. */
+  if (!apiHost) {
+    return url;
+  }
+
   let unwrap = false;
   const whitelistedDomains = ['fxtwitter.com', 'fixupx.com', 'fxbsky.app'];
   try {

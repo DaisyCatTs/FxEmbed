@@ -6,6 +6,7 @@ import { Experiment, experimentCheck } from '../../../experiments';
 import { getBranding } from '../../../helpers/branding';
 import { InputFlags } from '../../../types/types';
 
+import { fetchHorizonProfilePage } from '../../../helpers/horizonWeb';
 /* Handler for User Profiles */
 export const profileRequest = async (c: Context) => {
   const handle = c.req.param('handle');
@@ -76,9 +77,8 @@ export const profileRequest = async (c: Context) => {
         return c.redirect(horizonProfileUrl, 302);
       }
       if (experimentCheck(Experiment.USE_HORIZON_WEB, baseUrl === Constants.TWITTER_ROOT)) {
-        const app = await fetch(`https://app.fxtwitter.com/${handle}`);
-        const appBody = await app.text();
-        if (appBody.includes('<!doctype html>')) {
+        const appBody = await fetchHorizonProfilePage(handle);
+        if (appBody) {
           return c.html(appBody, 200);
         } else {
           return c.redirect(newUrl, 302);
@@ -98,9 +98,8 @@ export const profileRequest = async (c: Context) => {
       return c.redirect(horizonProfileUrl, 302);
     }
     if (experimentCheck(Experiment.USE_HORIZON_WEB, baseUrl === Constants.TWITTER_ROOT)) {
-      const app = await fetch(`https://app.fxtwitter.com/${handle}`);
-      const appBody = await app.text();
-      if (appBody.includes('<!doctype html>')) {
+      const appBody = await fetchHorizonProfilePage(handle);
+      if (appBody) {
         return c.html(appBody, 200);
       } else {
         return c.redirect(url, 302);

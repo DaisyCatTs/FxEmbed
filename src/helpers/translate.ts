@@ -1,4 +1,5 @@
 import { Context } from 'hono';
+import { allowHosts, guardedFetch } from '@fxembed/atmosphere/net';
 import type { APIMastodonStatus, APITwitterStatus } from '../realms/api/schemas';
 import { Constants } from '../constants';
 import { normalizeLanguage } from './language';
@@ -26,15 +27,21 @@ export const translateStatus = async (
     return null;
   }
   try {
-    const response = await fetch(`https://${domain}/translate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${Constants.POLYGLOT_ACCESS_TOKEN}`,
-        'User-Agent': Constants.FRIENDLY_USER_AGENT
+    /* Pinned to the configured translation host. The Authorization header carries the operator's
+       access token, so a redirect off this host would leak it. */
+    const response = await guardedFetch(
+      `https://${domain}/translate`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${Constants.POLYGLOT_ACCESS_TOKEN}`,
+          'User-Agent': Constants.FRIENDLY_USER_AGENT
+        },
+        body: JSON.stringify({ text: status.text, source_lang: status.lang, target_lang: language })
       },
-      body: JSON.stringify({ text: status.text, source_lang: status.lang, target_lang: language })
-    });
+      { hostPolicy: allowHosts(domain) }
+    );
 
     const data: PolyglotTranslation = await response.json();
 

@@ -1,20 +1,52 @@
 import { getMastodonProviderEnv } from '../mastodon-runtime.js';
+import {
+  allowHosts,
+  ANY_PUBLIC_HOST,
+  checkUrl,
+  guardedFetch,
+  NetError,
+  normalizeHostname,
+  readTextCapped
+} from '../../net/index.js';
 
 const DEFAULT_TIMEOUT_MS = 12_000;
+/** Instance API responses are JSON documents; a larger body is not something we should read. */
+const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 
-/** Basic hostname guard against SSRF / junk input */
+/**
+ * Validate a Mastodon instance hostname.
+ *
+ * This is the one provider whose host comes straight from the request path and cannot be
+ * allowlisted — any instance on the fediverse is legitimate. That makes it the sharpest SSRF edge
+ * in the codebase, so the check is the full URL validator rather than a syntax test.
+ *
+ * The previous version only rejected slashes, backslashes, `..` and characters outside
+ * `[a-z0-9.-]`, which accepted `localhost`, `127.0.0.1` and `169.254.169.254` — every address
+ * an SSRF is actually aimed at.
+ */
 export const assertSafeMastodonDomain = (domain: string): string => {
   const d = domain.trim().toLowerCase();
   if (!d || d.length > 253) {
     throw new Error('invalid_domain');
   }
-  if (d.includes('/') || d.includes('\\') || d.includes('..')) {
+
+  /* Must be a bare hostname. Without this, `evil.example/../admin` or `user:pass@evil.example`
+     parse into a perfectly valid URL whose hostname is fine, and we would silently accept input
+     that was never a hostname at all. */
+  if (/[/\\?#@:\s]/.test(d)) {
     throw new Error('invalid_domain');
   }
-  if (!/^[a-z0-9][a-z0-9.-]*[a-z0-9]$/i.test(d) && !/^[a-z0-9]+$/i.test(d)) {
+
+  const checked = checkUrl(`https://${d}/`, ANY_PUBLIC_HOST);
+  if (!checked.ok) {
     throw new Error('invalid_domain');
   }
-  return d;
+
+  /* Return the normalised host (lowercased, punycoded, no trailing root label) so that everything
+     downstream — URL building and the allowlist the fetch is pinned to — compares the same
+     string. `mastodon.social.` and `mastodon.social` are the same host to DNS but not to
+     `endsWith`. */
+  return normalizeHostname(checked.url.hostname);
 };
 
 const instanceBase = (domain: string): string => `https://${assertSafeMastodonDomain(domain)}`;
@@ -22,53 +54,6 @@ const instanceBase = (domain: string): string => `https://${assertSafeMastodonDo
 export type MastodonFetchOk<T> = { ok: true; data: T; link: string | null };
 export type MastodonFetchErr = { ok: false; status: number; body: string };
 export type MastodonFetchResult<T> = MastodonFetchOk<T> | MastodonFetchErr;
-
-const mastodonFetchInit = (signal: AbortSignal): RequestInit => ({
-  signal,
-  /** Workers do not support `error`; use `manual` and handle redirects (see below). */
-  redirect: 'manual',
-  headers: {
-    'Accept': 'application/json',
-    'User-Agent': getMastodonProviderEnv().userAgent
-  }
-});
-
-const isRedirectStatus = (s: number): boolean =>
-  s === 301 || s === 302 || s === 303 || s === 307 || s === 308;
-
-/** Single same-host hop (e.g. trailing slash / canonical URL) without following cross-origin redirects. */
-async function resolveMastodonRedirectIfNeeded(
-  initialUrl: string,
-  res: Response,
-  expectedHost: string,
-  signal: AbortSignal
-): Promise<Response | MastodonFetchErr> {
-  if (!isRedirectStatus(res.status)) {
-    return res;
-  }
-  const loc = res.headers.get('Location');
-  if (!loc) {
-    return { ok: false, status: 502, body: 'Mastodon redirect missing Location' };
-  }
-  let resolved: URL;
-  try {
-    resolved = new URL(loc, initialUrl);
-  } catch {
-    return { ok: false, status: 502, body: 'Mastodon redirect invalid Location' };
-  }
-  if (resolved.hostname.toLowerCase() !== expectedHost) {
-    return {
-      ok: false,
-      status: 502,
-      body: `Mastodon redirect to different host rejected (${resolved.hostname})`
-    };
-  }
-  return fetch(resolved.href, mastodonFetchInit(signal));
-}
-
-function isMastodonFetchErr(x: Response | MastodonFetchErr): x is MastodonFetchErr {
-  return !(x instanceof Response);
-}
 
 async function mastodonFetch<T>(
   domain: string,
@@ -80,38 +65,46 @@ async function mastodonFetch<T>(
     if (v === undefined) continue;
     qs.set(k, String(v));
   }
-  const ac = new AbortController();
-  const t = setTimeout(() => ac.abort(), DEFAULT_TIMEOUT_MS);
-  const expectedHost = assertSafeMastodonDomain(domain).toLowerCase();
+
   let res: Response;
   try {
+    const expectedHost = assertSafeMastodonDomain(domain);
     const url = `${instanceBase(domain)}${path}${qs.size ? `?${qs.toString()}` : ''}`;
-    res = await fetch(url, mastodonFetchInit(ac.signal));
-    const afterRedirect = await resolveMastodonRedirectIfNeeded(url, res, expectedHost, ac.signal);
-    if (isMastodonFetchErr(afterRedirect)) {
-      clearTimeout(t);
-      return afterRedirect;
-    }
-    res = afterRedirect;
+
+    /* Pin the policy to this one instance. Redirects are then allowed for the canonical-URL and
+       trailing-slash hops an instance legitimately uses, but a redirect to any other host is
+       refused by the guard rather than by a check we have to remember to write here. */
+    res = await guardedFetch(
+      url,
+      {
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': getMastodonProviderEnv().userAgent
+        }
+      },
+      {
+        hostPolicy: allowHosts(expectedHost),
+        timeoutMs: DEFAULT_TIMEOUT_MS,
+        maxBytes: MAX_RESPONSE_BYTES
+      }
+    );
   } catch (e) {
-    clearTimeout(t);
     const msg = e instanceof Error ? e.message : String(e);
-    return { ok: false, status: 504, body: msg };
+    /* A blocked host is a bad request, not an upstream timeout. */
+    const status = e instanceof NetError && e.kind === 'blocked' ? 400 : 504;
+    return { ok: false, status, body: msg };
+  }
+
+  const link = res.headers.get('Link');
+  if (!res.ok) {
+    const body = await readTextCapped(res, MAX_RESPONSE_BYTES);
+    return { ok: false, status: res.status, body };
   }
   try {
-    const link = res.headers.get('Link');
-    if (!res.ok) {
-      const body = await res.text();
-      return { ok: false, status: res.status, body };
-    }
-    try {
-      const data = (await res.json()) as T;
-      return { ok: true, data, link };
-    } catch {
-      return { ok: false, status: 502, body: 'invalid JSON from Mastodon' };
-    }
-  } finally {
-    clearTimeout(t);
+    const data = (await res.json()) as T;
+    return { ok: true, data, link };
+  } catch {
+    return { ok: false, status: 502, body: 'invalid JSON from Mastodon' };
   }
 }
 

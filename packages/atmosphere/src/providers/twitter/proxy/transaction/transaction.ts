@@ -1,7 +1,16 @@
-import type { AnyNode } from 'domhandler';
-import { load, CheerioAPI } from 'cheerio';
 import { Cubic } from './cubic.js';
 import { isOdd, interpolate, convertRotationToMatrix, floatToHex } from './utils.js';
+import { parseHomePageSignals, parseMigrationPage, type HomePageSignals } from './html.js';
+
+import { NetPolicies, guardedFetch } from '../../../../net/index.js';
+
+/* Outbound requests go through the shared guard: host allowlist, https-only,
+   redirect re-validation, timeout and a response size ceiling. */
+const xFetch = (input: string | URL | Request, init: RequestInit = {}) =>
+  guardedFetch(input, init, {
+    hostPolicy: NetPolicies.twitterApi,
+    signal: init.signal ?? undefined
+  });
 
 // Cached fetch helper that uses Cloudflare Worker cache
 async function cachedFetch(
@@ -21,7 +30,7 @@ async function cachedFetch(
       return cachedResponse.clone();
     }
   }
-  const response = await fetch(request);
+  const response = await xFetch(request);
   if (request.method === 'GET' && response.ok) {
     const endTime = performance.now();
     console.log(`Cache miss for ${input} in ${endTime - startTime}ms`);
@@ -42,9 +51,11 @@ async function cachedFetch(
 }
 
 /**
- * Handle X.com migration (refresh meta and form-based redirect)
+ * Handle X.com migration (refresh meta and form-based redirect).
+ *
+ * Returns the raw HTML of the final page reached.
  */
-export async function handleXMigration(fetchNewHomePage = false): Promise<CheerioAPI> {
+export async function handleXMigration(fetchNewHomePage = false): Promise<string> {
   const homeUrl = 'https://x.com/home';
   let resp = await cachedFetch(
     homeUrl,
@@ -57,54 +68,31 @@ export async function handleXMigration(fetchNewHomePage = false): Promise<Cheeri
     fetchNewHomePage
   );
   let html = await resp.text();
-  let $ = load(html);
+  let page = await parseMigrationPage(html);
 
-  const migrationRegex =
-    /(https?:\/\/(?:www\.)?(?:twitter|x)\.com(?:\/x)?\/migrate[/?]tok=[A-Za-z0-9%\-_]+)/;
-
-  const metaRefresh = $('meta[http-equiv="refresh"]').get(0);
-  let migMatch: RegExpMatchArray | null = null;
-  if (metaRefresh) {
-    migMatch = $(metaRefresh).toString().match(migrationRegex);
-  }
-  if (!migMatch) {
-    migMatch = html.match(migrationRegex);
-  }
-  if (migMatch) {
-    resp = await cachedFetch(migMatch[1]);
+  if (page.migrationUrl) {
+    resp = await cachedFetch(page.migrationUrl);
     html = await resp.text();
-    $ = load(html);
+    page = await parseMigrationPage(html);
   }
 
-  const form = $('form[name="f"]').length
-    ? $('form[name="f"]')
-    : $('form[action="https://x.com/x/migrate"]');
-  if (form.length) {
-    const actionUrl = form.attr('action') || 'https://x.com/x/migrate';
-    const method = (form.attr('method') || 'POST').toUpperCase();
-    const inputs = form.find('input').toArray();
-    const data: Record<string, string> = {};
-    inputs.forEach(input => {
-      const name = $(input).attr('name');
-      const val = $(input).attr('value') || '';
-      if (name) data[name] = val;
-    });
-    if (method === 'GET') {
-      const url = actionUrl + '?' + new URLSearchParams(data).toString();
+  const form = page.form;
+  if (form) {
+    if (form.method === 'GET') {
+      const url = form.action + '?' + new URLSearchParams(form.fields).toString();
       resp = await cachedFetch(url);
     } else {
-      const body = new URLSearchParams(data).toString();
-      resp = await cachedFetch(actionUrl, {
+      const body = new URLSearchParams(form.fields).toString();
+      resp = await cachedFetch(form.action, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body
       });
     }
     html = await resp.text();
-    $ = load(html);
   }
 
-  return $;
+  return html;
 }
 
 const ON_DEMAND_FILE_REGEX = /,(\d+):["']ondemand\.s["']/;
@@ -112,7 +100,8 @@ const ON_DEMAND_HASH_PATTERN = (index: string) => new RegExp(`,${index}:"([0-9a-
 const INDICES_REGEX = /\(\w\[(\d{1,2})\],\s*16\)/g;
 
 export class ClientTransaction {
-  private homePage: CheerioAPI;
+  private homePageHtml: string;
+  private signals: HomePageSignals;
   private defaultRowIndex!: number;
   private defaultKeyBytesIndices!: number[];
   private key!: string;
@@ -122,16 +111,17 @@ export class ClientTransaction {
   static ADDITIONAL_RANDOM_NUMBER = 3;
   static DEFAULT_KEYWORD = 'obfiowerehiring';
 
-  private constructor(homePage: CheerioAPI) {
-    this.homePage = homePage;
+  private constructor(homePageHtml: string, signals: HomePageSignals) {
+    this.homePageHtml = homePageHtml;
+    this.signals = signals;
   }
 
   static async create(fetchNewHomePage = false): Promise<ClientTransaction> {
     if (fetchNewHomePage) {
       console.log(`Let's try fetching the home page again`);
     }
-    const page = await handleXMigration(fetchNewHomePage);
-    const tx = new ClientTransaction(page);
+    const html = await handleXMigration(fetchNewHomePage);
+    const tx = new ClientTransaction(html, await parseHomePageSignals(html));
     await tx.init();
     return tx;
   }
@@ -147,7 +137,7 @@ export class ClientTransaction {
   }
 
   private async getIndices(): Promise<[number, number[]]> {
-    const html = this.homePage.html() || '';
+    const html = this.homePageHtml;
     const indexMatch = ON_DEMAND_FILE_REGEX.exec(html);
     if (!indexMatch?.[1]) {
       throw new Error("Couldn't get on-demand file index");
@@ -174,8 +164,7 @@ export class ClientTransaction {
   }
 
   private getKey(): string {
-    const elem = this.homePage('[name="twitter-site-verification"]').first();
-    const content = elem.attr('content');
+    const content = this.signals.key;
     if (!content) {
       throw new Error("Couldn't get key from the page source");
     }
@@ -193,18 +182,9 @@ export class ClientTransaction {
     return Array.from(bytes);
   }
 
-  private getFrames(): AnyNode[] {
-    return this.homePage('[id^="loading-x-anim"]').toArray();
-  }
-
   private get2dArray(): number[][] {
-    const frames = this.getFrames();
     const idx = this.keyBytes[5] % 4;
-    const el = frames[idx];
-    const $el = this.homePage(el);
-    const g = $el.children().first();
-    const pathEl = g.children().eq(1);
-    const d = pathEl.attr('d');
+    const d = this.signals.framePaths[idx];
     if (!d) {
       throw new Error("Couldn't find path 'd' attribute");
     }

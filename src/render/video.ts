@@ -7,6 +7,8 @@ import type { APITwitterStatus } from '../realms/api/schemas';
 import { getBranding } from '../helpers/branding';
 import { getGIFTranscodeDomain, shouldTranscodeGif } from '../helpers/giftranscode';
 import { getVideoTranscodeDomain, getVideoTranscodeDomainBluesky } from '../helpers/transcode';
+import { interpolate } from '../strings';
+import { MetaTag, safeMetaUrl } from './meta';
 
 export const renderVideo = (
   properties: RenderProperties,
@@ -41,7 +43,7 @@ export const renderVideo = (
       all.length === status.media?.videos?.length
         ? i18next.t('videoCount')
         : i18next.t('mediaCount');
-    const videoCounter = baseString.format({
+    const videoCounter = interpolate(baseString, {
       number: String(all.indexOf(video) + 1),
       total: String(all.length)
     });
@@ -89,27 +91,44 @@ export const renderVideo = (
         : getVideoTranscodeDomainBluesky(status.id);
     url = `https://${domain}${new URL(url).pathname}`;
   } else if (
-    experimentCheck(Experiment.VIDEO_REDIRECT_WORKAROUND, !!Constants.API_HOST_LIST) &&
+    experimentCheck(Experiment.VIDEO_REDIRECT_WORKAROUND, Constants.API_HOST_LIST.length > 0) &&
     (userAgent?.includes('Discordbot') || userAgent?.includes('TelegramBot')) &&
     status.provider !== DataProvider.TikTok
   ) {
     url = `https://${Constants.API_HOST_LIST[0]}/2/go?url=${encodeURIComponent(url)}`;
   }
 
-  /* Push the raw video-related headers */
-  instructions.addHeaders = [
-    `<meta property="twitter:player:height" content="${video.height * sizeMultiplier}"/>`,
-    `<meta property="twitter:player:width" content="${video.width * sizeMultiplier}"/>`,
-    `<meta property="twitter:player:stream" content="${url}"/>`,
-    `<meta property="twitter:player:stream:content_type" content="${video.format}"/>`,
-    `<meta property="og:video" content="${url}"/>`,
-    `<meta property="og:video:secure_url" content="${url}"/>`,
-    `<meta property="og:video:height" content="${video.height * sizeMultiplier}"/>`,
-    `<meta property="og:video:width" content="${video.width * sizeMultiplier}"/>`,
-    `<meta property="og:video:type" content="${video.format}"/>`,
-    `<meta property="og:image" content="${video.thumbnail_url}"/>`,
-    `<meta property="twitter:image" content="0"/>`
+  /* Push the video-related tags */
+  const streamUrl = safeMetaUrl(url);
+  const thumbnailUrl = safeMetaUrl(video.thumbnail_url);
+  const tags: MetaTag[] = [
+    { property: 'twitter:player:height', content: String(video.height * sizeMultiplier) },
+    { property: 'twitter:player:width', content: String(video.width * sizeMultiplier) }
   ];
+
+  if (streamUrl) {
+    tags.push(
+      { property: 'twitter:player:stream', content: streamUrl },
+      { property: 'twitter:player:stream:content_type', content: String(video.format) },
+      { property: 'og:video', content: streamUrl },
+      { property: 'og:video:secure_url', content: streamUrl }
+    );
+  }
+
+  tags.push(
+    { property: 'og:video:height', content: String(video.height * sizeMultiplier) },
+    { property: 'og:video:width', content: String(video.width * sizeMultiplier) },
+    { property: 'og:video:type', content: String(video.format) }
+  );
+
+  if (thumbnailUrl) {
+    tags.push({ property: 'og:image', content: thumbnailUrl });
+  }
+
+  /* Not a URL — a sentinel that tells Twitter-card consumers there is no card image. */
+  tags.push({ property: 'twitter:image', content: '0' });
+
+  instructions.addHeaders = tags;
 
   return instructions;
 };

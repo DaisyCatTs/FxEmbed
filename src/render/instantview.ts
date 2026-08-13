@@ -11,6 +11,9 @@ import { isTombstone } from '../helpers/tombstone';
 import { getVideoTranscodeDomain, getVideoTranscodeDomainBluesky } from '../helpers/transcode';
 import { experimentCheck, Experiment } from '../experiments';
 import { proxyTwitterPostPhotoUrl, shouldProxyTelegramPbsPhotos } from '../helpers/pbsProxy';
+import { interpolate } from '../strings';
+import { MetaTag } from './meta';
+import { raw } from './html';
 
 /**
  * Check if the tweet text is essentially just an article URL with no meaningful additional content.
@@ -75,7 +78,12 @@ const generateStatusMedia = (status: APIStatus, proxyPbs: boolean): string => {
     status.media.all.forEach(mediaItem => {
       let url = mediaItem.url;
 
-      if (experimentCheck(Experiment.KITCHENSINK_VIDEO, !!Constants.VIDEO_TRANSCODE_DOMAIN_LIST)) {
+      if (
+        experimentCheck(
+          Experiment.KITCHENSINK_VIDEO,
+          Constants.VIDEO_TRANSCODE_DOMAIN_LIST.length > 0
+        )
+      ) {
         const domain =
           status.provider === DataProvider.Twitter
             ? getVideoTranscodeDomain(status.id)
@@ -87,16 +95,16 @@ const generateStatusMedia = (status: APIStatus, proxyPbs: boolean): string => {
           // eslint-disable-next-line no-case-declarations
           const { altText } = mediaItem as APIPhoto;
           url = proxyTwitterPostPhotoUrl(url, proxyPbs);
-          media += `<img src="{url}" {altText}/>`.format({
-            altText: altText ? `alt="${altText}"` : '',
+          media += interpolate(`<img src="{url}" {altText}/>`, {
+            altText: altText ? `alt="${sanitizeText(altText)}"` : '',
             url: url
           });
           break;
         case 'video':
-          media += `<video src="${url}" alt="${i18next.t('videoAltTextUnavailable').format({ author: status.author.name })}"/>`;
+          media += `<video src="${url}" alt="${sanitizeText(interpolate(i18next.t('videoAltTextUnavailable'), { author: status.author.name }))}"/>`;
           break;
         case 'gif':
-          media += `<video src="${url}" alt="${i18next.t('gifAltTextUnavailable').format({ author: status.author.name })}"/>`;
+          media += `<video src="${url}" alt="${sanitizeText(interpolate(i18next.t('gifAltTextUnavailable'), { author: status.author.name }))}"/>`;
           break;
       }
     });
@@ -166,8 +174,8 @@ function getTranslatedText(status: APITwitterStatus, isQuote = false): string | 
     text = populateUserLinks(text, status as APIStatus);
   }
 
-  const formatText = `📑 {translation}`.format({
-    translation: i18next.t('translatedFrom').format({
+  const formatText = interpolate(`📑 {translation}`, {
+    translation: interpolate(i18next.t('translatedFrom'), {
       language: i18next.t(`language_${status.translation.source_lang}`)
     })
   });
@@ -233,22 +241,25 @@ const generateStatusFooter = (
     description = populateUserLinks(description, status);
   }
 
-  return `
+  return interpolate(
+    `
     <p>{socialText}</p>
     <br>{viewOriginal}
     <!-- Embed profile picture, display name, and screen name in table -->
     <hr/>
     {aboutSection}
-    `.format({
-    socialText: getSocialTextIV(status as APITwitterStatus) || '',
-    viewOriginal:
-      !isQuote && status.provider !== DataProvider.Bluesky
-        ? `<a href="${status.url}">${i18next.t('ivViewOriginal')}</a>`
-        : notApplicableComment,
-    aboutSection:
-      isQuote || status.provider === DataProvider.Bluesky
-        ? ''
-        : `<h2>${i18next.t('ivAboutAuthor')}</h2>
+    `,
+    {
+      socialText: getSocialTextIV(status as APITwitterStatus) || '',
+      viewOriginal:
+        !isQuote && status.provider !== DataProvider.Bluesky
+          ? `<a href="${status.url}">${i18next.t('ivViewOriginal')}</a>`
+          : notApplicableComment,
+      aboutSection:
+        isQuote || status.provider === DataProvider.Bluesky
+          ? ''
+          : interpolate(
+              `<h2>${i18next.t('ivAboutAuthor')}</h2>
         {pfp}
         <h2>${author.name}</h2>
         <p><a href="${author.url}">@${author.screen_name}</a></p>
@@ -258,18 +269,21 @@ const generateStatusFooter = (
           {following} <b>${i18next.t('ivProfileFollowing', { numFollowing: author.following })}</b> 
           {followers} <b>${i18next.t('ivProfileFollowers', { numFollowers: author.followers })}</b> 
           {statuses} <b>${i18next.t('ivProfileStatuses', { numStatuses: author.statuses })}</b>
-        </p>`.format({
-            pfp: `<img src="${author.avatar_url?.replace('_200x200', '_400x400')}" alt="${i18next.t('ivProfilePictureAlt', { author: author.name })}" />`,
-            location: author.location ? `📌 ${author.location}` : '',
-            website: author.website
-              ? `🔗 <a rel="nofollow" href="${wrapForeignLinks(author.website.url)}">${author.website.display_url}</a>`
-              : '',
-            joined: author.joined ? `📆 ${formatDate(new Date(author.joined), language)}` : '',
-            following: truncateSocialCount(author.following, language),
-            followers: truncateSocialCount(author.followers, language),
-            statuses: truncateSocialCount(author.statuses, language)
-          })
-  });
+        </p>`,
+              {
+                pfp: `<img src="${author.avatar_url?.replace('_200x200', '_400x400')}" alt="${sanitizeText(i18next.t('ivProfilePictureAlt', { author: author.name }))}" />`,
+                location: author.location ? `📌 ${author.location}` : '',
+                website: author.website
+                  ? `🔗 <a rel="nofollow" href="${wrapForeignLinks(author.website.url)}">${author.website.display_url}</a>`
+                  : '',
+                joined: author.joined ? `📆 ${formatDate(new Date(author.joined), language)}` : '',
+                following: truncateSocialCount(author.following, language),
+                followers: truncateSocialCount(author.followers, language),
+                statuses: truncateSocialCount(author.statuses, language)
+              }
+            )
+    }
+  );
 };
 
 const generatePoll = (poll: APIPoll, language: string): string => {
@@ -376,7 +390,8 @@ const generateStatus = (
 
   const translatedText = getTranslatedText(twitterStatus, isQuote);
 
-  return `<!-- Telegram Instant View -->
+  return interpolate(
+    `<!-- Telegram Instant View -->
   {quoteHeader}
   <!-- Embed article (if applicable) -->
   ${articleHtml || notApplicableComment}
@@ -399,18 +414,20 @@ const generateStatus = (
         ? `<blockquote><i>${sanitizeText(status.quote.message)}</i></blockquote>`
         : generateStatus(status.quote, author, language, true, null, proxyPbs)
       : notApplicableComment
-  }`.format({
-    quoteHeader: isQuote
-      ? '<h4>' +
-        i18next.t('ivQuoteHeader').format({
-          url: status.url,
-          authorName: status.author.name,
-          authorHandle: status.author.screen_name,
-          authorURL: status.author.url
-        }) +
-        '</h4>'
-      : ''
-  });
+  }`,
+    {
+      quoteHeader: isQuote
+        ? '<h4>' +
+          interpolate(i18next.t('ivQuoteHeader'), {
+            url: status.url,
+            authorName: status.author.name,
+            authorHandle: status.author.screen_name,
+            authorURL: status.author.url
+          }) +
+          '</h4>'
+        : ''
+    }
+  );
 };
 
 export const renderInstantView = (properties: RenderProperties): ResponseInstructions => {
@@ -440,13 +457,22 @@ export const renderInstantView = (properties: RenderProperties): ResponseInstruc
     
      If you work for Telegram and want to let us build our own templates
      contact me https://t.me/dangeredwolf */
-  instructions.addHeaders = [
-    `<meta property="al:android:app_name" content="Medium"/>`,
-    `<meta property="article:published_time" content="${statusDate}"/>`,
-    flags?.archive
-      ? `<style>img,video{width:100%;max-width:500px}html{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif}</style>`
-      : ``
+  const headerTags: MetaTag[] = [
+    { property: 'al:android:app_name', content: 'Medium' },
+    { property: 'article:published_time', content: statusDate }
   ];
+
+  if (flags?.archive) {
+    /* raw() #1: a fixed stylesheet literal with no interpolation at all, so there is nothing
+       attacker-controlled in it. It is a <style>, not a <meta>, hence the rawHtml variant. */
+    headerTags.push({
+      rawHtml: raw(
+        `<style>img,video{width:100%;max-width:500px}html{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif}</style>`
+      )
+    });
+  }
+
+  instructions.addHeaders = headerTags;
 
   // For article-only tweets, use article title as main heading and skip "View full thread" at top
   const mainHeading =
@@ -464,7 +490,7 @@ export const renderInstantView = (properties: RenderProperties): ResponseInstruc
     </section>
     <section class="section--first">${
       flags?.archive
-        ? i18next.t('ivInternetArchiveText').format({
+        ? interpolate(i18next.t('ivInternetArchiveText'), {
             brandingName: getBranding(properties.context).name
           })
         : i18next.t('ivFallbackText')

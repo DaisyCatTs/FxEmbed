@@ -4,6 +4,7 @@ import { refreshBlueskyTokens } from './tokens.js';
 import { BlueskyAuthError } from '../../../transports/errors.js';
 import { readDpopNonceFromResponse, responseRequestsDpopNonce } from './oauth-http.js';
 
+import { publicGuardedFetch } from '../../../net/index.js';
 type BlueskyXrpcParams = Record<string, string | number | boolean | undefined | string[]>;
 
 function trimBaseUrl(base: string): string {
@@ -61,7 +62,7 @@ export async function authenticatedXrpc<T>(opts: AuthenticatedXrpcOptions): Prom
   data: T;
   session: BlueskyAuthSession;
 }> {
-  const fetchImpl = opts.fetchImpl ?? fetch;
+  const fetchImpl = opts.fetchImpl ?? publicGuardedFetch;
   const method = opts.method ?? 'GET';
   const base = trimBaseUrl(opts.baseUrl ?? opts.session.pdsOrigin);
   const query = opts.query ?? {};

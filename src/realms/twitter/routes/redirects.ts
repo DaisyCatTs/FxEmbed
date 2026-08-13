@@ -1,11 +1,12 @@
 import { Context } from 'hono';
-import { Strings } from '../../../strings';
+import { interpolate, Strings } from '../../../strings';
 import { sanitizeText } from '../../../helpers/utils';
 import { getBaseRedirectUrl, isHorizonEmbedParam } from '../router';
 import { Constants } from '../../../constants';
 import { getBranding } from '../../../helpers/branding';
 import { Experiment, experimentCheck } from '../../../experiments';
 
+import { fetchHorizonPathPage } from '../../../helpers/horizonWeb';
 export const genericTwitterRedirect = async (c: Context) => {
   const url = new URL(c.req.url);
   if (isHorizonEmbedParam(url)) {
@@ -26,9 +27,8 @@ export const genericTwitterRedirect = async (c: Context) => {
   }
 
   if (experimentCheck(Experiment.USE_HORIZON_WEB, baseUrl === Constants.TWITTER_ROOT)) {
-    const app = await fetch(`https://app.fxtwitter.com${url.pathname}`);
-    const appBody = await app.text();
-    if (appBody.includes('<!doctype html>')) {
+    const appBody = await fetchHorizonPathPage(url.pathname);
+    if (appBody) {
       return c.html(appBody, 200);
     }
   }
@@ -45,7 +45,7 @@ export const setRedirectRequest = async (c: Context) => {
   const origin = c.req.header('origin');
   if (origin && !Constants.STANDARD_DOMAIN_LIST.includes(new URL(origin).hostname)) {
     return c.html(
-      Strings.MESSAGE_HTML.format({
+      interpolate(Strings.MESSAGE_HTML, {
         message: `Failed to set base redirect: Your request seems to be originating from another domain, please open this up in a new tab if you are trying to set your base redirect.`
       }),
       403
@@ -64,7 +64,7 @@ export const setRedirectRequest = async (c: Context) => {
     );
 
     return c.html(
-      Strings.MESSAGE_HTML.format({
+      interpolate(Strings.MESSAGE_HTML, {
         brandingName: getBranding(c).name,
         message: `Your base redirect has been cleared. To set one, please pass along the <code>url</code> parameter.`
       }),
@@ -90,7 +90,7 @@ export const setRedirectRequest = async (c: Context) => {
         `frame-ancestors ${Constants.STANDARD_DOMAIN_LIST.join(' ')};`
       );
       return c.html(
-        Strings.MESSAGE_HTML.format({
+        interpolate(Strings.MESSAGE_HTML, {
           message: `Your URL does not appear to be well-formed. Example: ?url=https://nitter.net`
         }),
         200
@@ -107,7 +107,7 @@ export const setRedirectRequest = async (c: Context) => {
   );
 
   return c.html(
-    Strings.MESSAGE_HTML.format({
+    interpolate(Strings.MESSAGE_HTML, {
       message: `Successfully set base redirect, you will now be redirected to ${sanitizeText(
         url
       )} rather than ${Constants.TWITTER_ROOT}`,

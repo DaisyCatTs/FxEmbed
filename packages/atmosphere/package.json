@@ -30,6 +30,10 @@
       "types": "./dist/helpers/index.d.ts",
       "import": "./dist/helpers/index.js"
     },
+    "./net": {
+      "types": "./dist/net/index.d.ts",
+      "import": "./dist/net/index.js"
+    },
     "./helpers/*": {
       "types": "./dist/helpers/*.d.ts",
       "import": "./dist/helpers/*.js"

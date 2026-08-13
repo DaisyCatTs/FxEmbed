@@ -1,11 +1,24 @@
 import { withTimeout } from '../../helpers/with-timeout.js';
 import { generateUserAgent } from '../../helpers/user-agent.js';
+import { guardedFetch, NetPolicies, resolveRedirectTarget } from '../../net/index.js';
 import type { SocialThread } from '../../types/api-status.js';
 import { buildAPITikTokStatus } from './processor.js';
+
+/* Outbound requests go through the shared guard: host allowlist, https-only,
+   redirect re-validation, timeout and a response size ceiling. */
+const tiktokFetch = (input: string | URL | Request, init: RequestInit = {}) =>
+  guardedFetch(input, init, {
+    hostPolicy: NetPolicies.tiktokApi,
+    signal: init.signal ?? undefined
+  });
 
 const TIKTOK_WEB_HOST = 'https://www.tiktok.com';
 const TIKTOK_SHORT_HOST = 'https://vm.tiktok.com';
 const TIKTOK_API_HOST = 'https://api16-normal-c-useast1a.tiktokv.com';
+
+const SHORT_URL_TIMEOUT_MS = 3_500;
+/** A shortener response is a redirect or a tiny HTML stub; anything larger is not for us. */
+const SHORT_URL_MAX_BYTES = 256 * 1024;
 
 /**
  * Result from resolving a short URL
@@ -30,62 +43,53 @@ export interface TikTokFetchResult {
  * @param shortCode - Either just the code (e.g., "ZP8yxgATu") or a full shorthand URL
  */
 export const resolveShortUrl = async (shortCode: string): Promise<ResolvedTikTokUrl | null> => {
-  // Determine if we need to construct a URL or if one was provided
-  let shortUrl: string;
-
-  if (shortCode.startsWith('http://') || shortCode.startsWith('https://')) {
-    // Full URL provided
-    shortUrl = shortCode;
-  } else if (shortCode.includes('/')) {
-    // Relative path provided (e.g., "/t/ZP8yxgATu/")
-    shortUrl = `${TIKTOK_WEB_HOST}${shortCode.startsWith('/') ? shortCode : '/' + shortCode}`;
-  } else {
-    // Just a code, use vm.tiktok.com (legacy format)
-    shortUrl = `${TIKTOK_SHORT_HOST}/${shortCode}`;
+  /* Only ever accept a bare code and build the URL ourselves.
+     This used to accept a full `http(s)://...` string and fetch it verbatim. The code arrives
+     from a request path (`/t/:id`), and Hono percent-decodes path params, so `%2F` was enough to
+     smuggle in an arbitrary URL and turn this into a blind SSRF probe. */
+  if (!isShortCode(shortCode)) {
+    console.error('Refusing to resolve a TikTok short code of an unexpected shape');
+    return null;
   }
 
+  const shortUrl = `${TIKTOK_SHORT_HOST}/${shortCode}`;
   console.log('Resolving TikTok short URL:', shortUrl);
 
   try {
     const [userAgent, secChUa] = generateUserAgent();
-    // Use redirect: 'manual' to capture the redirect location without following it
-    const response = await withTimeout((signal: AbortSignal) =>
-      fetch(shortUrl, {
-        method: 'HEAD',
-        headers: {
-          'User-Agent': userAgent,
-          'sec-ch-ua': secChUa,
-          'Accept': 'text/html'
-        },
-        redirect: 'manual',
-        signal
-      })
+    const headers = {
+      'User-Agent': userAgent,
+      'sec-ch-ua': secChUa,
+      'Accept': 'text/html'
+    };
+
+    /* The destination must still be TikTok: the shortener is only allowed to point back into
+       its own CDN/site, never anywhere else. */
+    const target = await resolveRedirectTarget(
+      shortUrl,
+      { method: 'HEAD', headers },
+      {
+        hostPolicy: NetPolicies.tiktokApi,
+        targetPolicy: NetPolicies.tiktokMediaAndSite,
+        timeoutMs: SHORT_URL_TIMEOUT_MS
+      }
     );
 
-    // Check for redirect (301, 302, 303, 307, 308)
-    const location = response.headers.get('location');
-    if (location) {
-      return parseVideoUrl(location);
+    if (target) {
+      return parseVideoUrl(target.href);
     }
 
-    // If no redirect header, try following the redirect
-    if (response.status >= 300 && response.status < 400) {
-      // Some servers don't include location in HEAD, try GET
-      const getResponse = await withTimeout((signal: AbortSignal) =>
-        fetch(shortUrl, {
-          headers: {
-            'User-Agent': userAgent,
-            'sec-ch-ua': secChUa,
-            'Accept': 'text/html'
-          },
-          redirect: 'follow',
-          signal
-        })
-      );
-      return parseVideoUrl(getResponse.url);
-    }
+    /* Some edges answer HEAD without a Location. Retry with GET, following hops safely. */
+    const response = await guardedFetch(
+      shortUrl,
+      { headers },
+      {
+        hostPolicy: NetPolicies.tiktokMediaAndSite,
+        timeoutMs: SHORT_URL_TIMEOUT_MS,
+        maxBytes: SHORT_URL_MAX_BYTES
+      }
+    );
 
-    // If response is OK, the URL might have resolved fully
     if (response.ok) {
       return parseVideoUrl(response.url);
     }
@@ -255,7 +259,7 @@ const fetchVideoPage = async (videoId: string): Promise<TikTokFetchResult> => {
   try {
     const [userAgent, secChUa] = generateUserAgent();
     const response = await withTimeout((signal: AbortSignal) =>
-      fetch(url, {
+      tiktokFetch(url, {
         headers: {
           'User-Agent': userAgent,
           'sec-ch-ua': secChUa,
@@ -506,7 +510,7 @@ const fetchMobileApi = async (videoId: string): Promise<TikTokAwemeDetail | null
     });
 
     const response = await withTimeout((signal: AbortSignal) =>
-      fetch(apiUrl, {
+      tiktokFetch(apiUrl, {
         method: 'POST',
         headers: {
           'User-Agent': TIKTOK_MOBILE_UA,
@@ -634,8 +638,12 @@ export const fetchTikTokVideoFromShortUrl = async (shortCode: string): Promise<T
  * Video IDs are purely numeric and typically 19 digits
  */
 export const isShortCode = (identifier: string): boolean => {
-  // If it contains any non-numeric characters, it's a short code
-  return !/^\d+$/.test(identifier);
+  /* A TikTok short code is a short alphanumeric token such as "ZP8yxgATu"; an all-numeric string
+     is a video id and is handled by the caller's other branch.
+
+     This previously returned true for *any* non-numeric string, so a whole URL counted as a short
+     code and `resolveShortUrl` then fetched it verbatim. Match the real shape instead. */
+  return /^[A-Za-z0-9]{5,32}$/.test(identifier) && !/^\d+$/.test(identifier);
 };
 
 /**

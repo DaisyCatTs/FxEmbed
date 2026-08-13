@@ -1,5 +1,5 @@
 /* eslint-disable no-case-declarations */
-import { Strings } from '../strings';
+import { interpolate, Strings } from '../strings';
 import { DataProvider, returnError } from './status';
 import { constructTwitterThread } from '@fxembed/atmosphere/providers/twitter/conversation';
 import { twitterBuildHostFromContext } from '../providers/twitter/build-host-adapter';
@@ -65,7 +65,7 @@ const convertArticleMediaToAttachment = (
       sizeMultiplier = 2;
     }
 
-    if (experimentCheck(Experiment.VIDEO_REDIRECT_WORKAROUND, !!Constants.API_HOST_LIST)) {
+    if (experimentCheck(Experiment.VIDEO_REDIRECT_WORKAROUND, Constants.API_HOST_LIST.length > 0)) {
       const redirectedUrl = `https://${Constants.API_HOST_LIST[0]}/2/go?url=${encodeURIComponent(videoUrl)}`;
       return {
         id: media.media_id,
@@ -161,8 +161,8 @@ const getStatusText = (status: APIStatus): StatusTextResult => {
     console.log('translation', JSON.stringify(status.translation));
     const { translation } = status;
 
-    const formatText = `<b>📑 {translation}</b>`.format({
-      translation: i18next.t('translatedFrom').format({
+    const formatText = interpolate(`<b>📑 {translation}</b>`, {
+      translation: interpolate(i18next.t('translatedFrom'), {
         language: i18next.t(`language_${translation?.source_lang}`)
       })
     });
@@ -179,7 +179,7 @@ const getStatusText = (status: APIStatus): StatusTextResult => {
       const quoteText = (status.quote.translation?.text ?? status.quote.text)
         .trim()
         .replace(/\n/g, '<br>︀︀');
-      text += `<blockquote><b>${i18next.t('ivQuoteHeader').format({
+      text += `<blockquote><b>${interpolate(i18next.t('ivQuoteHeader'), {
         authorName: status.quote.author.name,
         authorURL: status.quote.author.url,
         authorHandle: status.quote.author.screen_name,
@@ -574,7 +574,12 @@ export const handleActivity = async (
     } else if (mediaList && mediaList.length > 0) {
       // Cast results to ActivityMediaAttachment[]
       response.media_attachments = mediaList
-        .map(media => {
+        .map((media, index) => {
+          /* Attachment ids must be unique. Clients treat Mastodon attachments as a keyed set, so
+             reusing one id across a multi-photo post collapses it to a single image. Upstream
+             media ids are already unique; fall back to the status id plus position. */
+          const attachmentId = media.id ?? `${statusId}${index}`;
+
           if (media.type === 'gif') {
             const videoMedia = media as APIVideo;
             const photoMedia = media as APIPhoto;
@@ -591,7 +596,7 @@ export const handleActivity = async (
             case 'photo':
               const image = media as APIPhoto;
               return {
-                id: '114163769487684704',
+                id: attachmentId,
                 type: 'image',
                 url: image.url,
                 preview_url: null,
@@ -621,15 +626,21 @@ export const handleActivity = async (
               }
               // Apply video redirect workaround, but NOT for TikTok/Instagram (CDN URLs work directly)
               if (
-                experimentCheck(Experiment.VIDEO_REDIRECT_WORKAROUND, !!Constants.API_HOST_LIST) &&
+                experimentCheck(
+                  Experiment.VIDEO_REDIRECT_WORKAROUND,
+                  Constants.API_HOST_LIST.length > 0
+                ) &&
                 thread.status?.provider !== DataProvider.TikTok &&
                 thread.status?.provider !== DataProvider.Instagram
               ) {
                 video.url = `https://${Constants.API_HOST_LIST[0]}/2/go?url=${encodeURIComponent(video.url)}`;
               }
               return {
-                id: '114163769487684704',
-                type: 'video',
+                id: attachmentId,
+                /* `gifv` is Mastodon's type for a GIF delivered as a silent looping video, which
+                   is exactly what X and Bluesky serve. Clients render it as an auto-looping
+                   player; labelling it `video` gets a click-to-play control instead. */
+                type: media.type === 'gif' ? 'gifv' : 'video',
                 url: video.url,
                 preview_url: video.thumbnail_url,
                 remote_url: null,

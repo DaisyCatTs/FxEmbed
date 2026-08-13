@@ -7,6 +7,7 @@ import { Experiment, experimentCheck } from '../../../experiments';
 import { InputFlags } from '../../../types/types';
 import { isTwitterNumericStatusId } from '../../../helpers/utils';
 
+import { fetchHorizonStatusPage } from '../../../helpers/horizonWeb';
 /* Handler for status request */
 export const statusRequest = async (c: Context) => {
   const { handle, id, mediaNumber, language } = c.req.param();
@@ -158,9 +159,8 @@ export const statusRequest = async (c: Context) => {
         }
 
         if (experimentCheck(Experiment.USE_HORIZON_WEB, baseUrl === Constants.TWITTER_ROOT)) {
-          const app = await fetch(`https://app.fxtwitter.com/${handle}/status/${id}`);
-          const appBody = await app.text();
-          if (appBody.includes('<!doctype html>')) {
+          const appBody = await fetchHorizonStatusPage(handle, id);
+          if (appBody) {
             return c.html(appBody, 200);
           } else if (baseUrl.startsWith('twitter:/')) {
             console.log('twitter:// redirect');
@@ -198,10 +198,8 @@ export const statusRequest = async (c: Context) => {
     }
 
     if (experimentCheck(Experiment.USE_HORIZON_WEB, baseUrl === Constants.TWITTER_ROOT)) {
-      const app = await fetch(`https://app.fxtwitter.com/${handle}/status/${id}`);
-      const appBody = await app.text();
-      console.log('appBody', appBody);
-      if (appBody.includes('<!doctype html>')) {
+      const appBody = await fetchHorizonStatusPage(handle, id);
+      if (appBody) {
         console.log('found it');
         return c.html(appBody, 200);
       } else {

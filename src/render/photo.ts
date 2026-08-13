@@ -1,7 +1,8 @@
 import i18next from 'i18next';
-import { Strings } from '../strings';
+import { interpolate, Strings } from '../strings';
 import { getBranding } from '../helpers/branding';
 import { proxyTwitterPostPhotoUrl, shouldProxyTelegramPbsPhotos } from '../helpers/pbsProxy';
+import { MetaTag, safeMetaUrl } from './meta';
 
 export const renderPhoto = (
   properties: RenderProperties,
@@ -18,7 +19,7 @@ export const renderPhoto = (
         ? i18next.t('photoCount')
         : i18next.t('mediaCount');
 
-    const photoCounter = baseString.format({
+    const photoCounter = interpolate(baseString, {
       number: String(all.indexOf(photo) + 1),
       total: String(all.length)
     });
@@ -38,30 +39,42 @@ export const renderPhoto = (
 
   console.log('photo!', photo);
 
+  const tags: MetaTag[] = [];
+
   if (photo.type === 'mosaic_photo' && !isOverrideMedia) {
-    instructions.addHeaders = [
-      `<meta property="twitter:image" content="${photo.formats.jpeg}"/>`,
-      `<meta property="og:image" content="${photo.formats.jpeg}"/>`
-    ];
+    const mosaicUrl = safeMetaUrl(photo.formats.jpeg);
+    if (mosaicUrl) {
+      tags.push(
+        { property: 'twitter:image', content: mosaicUrl },
+        { property: 'og:image', content: mosaicUrl }
+      );
+    }
   } else {
     photo = photo as APIPhoto;
     const proxyPbs = shouldProxyTelegramPbsPhotos(isTelegram);
-    const photoUrl = proxyTwitterPostPhotoUrl(photo.url, proxyPbs);
-    instructions.addHeaders = [
-      `<meta property="twitter:image" content="${photoUrl}"/>`,
-      `<meta property="og:image" content="${photoUrl}"/>`,
-      `<meta property="twitter:image:width" content="${photo.width}"/>`,
-      `<meta property="twitter:image:height" content="${photo.height}"/>`,
-      `<meta property="og:image:width" content="${photo.width}"/>`,
-      `<meta property="og:image:height" content="${photo.height}"/>`
-    ];
-    if (photo.altText) {
-      instructions.addHeaders.push(
-        `<meta property="twitter:image:alt" content="${photo.altText}"/>`,
-        `<meta property="og:image:alt" content="${photo.altText}"/>`
+    const photoUrl = safeMetaUrl(proxyTwitterPostPhotoUrl(photo.url, proxyPbs));
+    if (photoUrl) {
+      tags.push(
+        { property: 'twitter:image', content: photoUrl },
+        { property: 'og:image', content: photoUrl },
+        { property: 'twitter:image:width', content: String(photo.width) },
+        { property: 'twitter:image:height', content: String(photo.height) },
+        { property: 'og:image:width', content: String(photo.width) },
+        { property: 'og:image:height', content: String(photo.height) }
       );
+      /* Alt text is entirely user-controlled and was previously interpolated raw into
+         content="...". It is escaped by serializeMeta now; it only makes sense alongside the
+         image itself, so it lives inside this branch. */
+      if (photo.altText) {
+        tags.push(
+          { property: 'twitter:image:alt', content: photo.altText },
+          { property: 'og:image:alt', content: photo.altText }
+        );
+      }
     }
   }
+
+  instructions.addHeaders = tags;
 
   return instructions;
 };

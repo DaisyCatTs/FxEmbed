@@ -12,6 +12,17 @@ export default defineConfig([
     plugins: { js },
     extends: ['js/recommended'],
     rules: {
+      /* Every outbound request must carry a host policy, timeout, redirect re-validation and a
+         response size cap. `src/net/guarded-fetch.ts` is the one place allowed to call the
+         global, and is exempted below. */
+      'no-restricted-globals': [
+        'error',
+        {
+          name: 'fetch',
+          message:
+            'Use guardedFetch from src/net so the request is host-checked, bounded and redirect-safe.'
+        }
+      ],
       'prefer-arrow-callback': 1,
       'no-unused-vars': 'off',
       '@typescript-eslint/no-unused-vars': [
@@ -31,6 +42,13 @@ export default defineConfig([
     files: ['src/helpers/link-fixer.ts', 'src/helpers/palette.ts'],
     rules: {
       '@typescript-eslint/triple-slash-reference': 'off'
+    }
+  },
+  {
+    // The guard itself has to call the global it is wrapping.
+    files: ['src/net/guarded-fetch.ts'],
+    rules: {
+      'no-restricted-globals': 'off'
     }
   }
 ]);

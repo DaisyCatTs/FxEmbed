@@ -5,7 +5,7 @@ import { sentry } from '@hono/sentry';
 import { ContentfulStatusCode } from 'hono/utils/http-status';
 import { rewriteFramesIntegration } from 'toucan-js';
 
-import { Strings } from './strings';
+import { interpolate, Strings } from './strings';
 import { Constants } from './constants';
 import {
   setBlueskyProviderEnv,
@@ -72,6 +72,13 @@ import { atmosphere } from './realms/atmosphere/router';
 import { getBranding } from './helpers/branding';
 import { tiktok } from './realms/tiktok/router';
 import { instagram } from './realms/instagram/router';
+import { identifyRealm } from './routing/identify';
+import { mediaOptions, mediaRequest } from './media/endpoint';
+import { mediaSigningKey } from './media/key';
+import { mintMediaUrl } from './media/mint';
+import { setMediaLinkRuntime } from '@fxembed/atmosphere/providers/media-runtime';
+
+setMediaLinkRuntime({ mint: mintMediaUrl });
 
 const noCache = 'max-age=0, no-cache, no-store, must-revalidate';
 const embeddingClientRegex =
@@ -92,6 +99,8 @@ export const app = new Hono<{
     /** Optional: tests use a Fetcher mock; production uses in-process proxy + CREDENTIAL_KEY. */
     TwitterProxy?: Fetcher;
     CREDENTIAL_KEY?: string;
+    /** HMAC secret for signed media links. A Wrangler secret — never `.env`, which is inlined. */
+    MEDIA_SIGNING_KEY?: string;
     EXCEPTION_DISCORD_WEBHOOK?: string;
     AnalyticsEngine: AnalyticsEngineDataset;
   };
@@ -104,51 +113,25 @@ export const app = new Hono<{
     } catch (_e) {
       return '/error';
     }
-    const baseHostName = url.hostname.split('.').slice(-2).join('.');
-    let realm = 'twitter';
-    /* Override if in API_HOST_LIST. Note that we have to check full hostname for this. */
-    if (Constants.API_HOST_LIST.includes(url.hostname)) {
-      realm = 'api';
-      console.log('API realm');
-    } else if (Constants.BLUESKY_API_HOST_LIST.includes(url.hostname)) {
-      realm = 'blueskyapi';
-      console.log('Bluesky API realm');
-    } else if (Constants.ATMOSPHERE_API_HOST_LIST.includes(url.hostname)) {
-      realm = 'atmosphere';
-      console.log('Atmosphere API realm');
-    } else if (Constants.STANDARD_DOMAIN_LIST.includes(baseHostName)) {
-      realm = 'twitter';
-      console.log('Twitter realm');
-    } else if (Constants.STANDARD_BSKY_DOMAIN_LIST.includes(baseHostName)) {
-      realm = 'bluesky';
-      console.log('Bluesky realm');
-    } else if (Constants.STANDARD_TIKTOK_DOMAIN_LIST.includes(baseHostName)) {
-      realm = 'tiktok';
-      console.log('TikTok realm');
-    } else if (Constants.STANDARD_INSTAGRAM_DOMAIN_LIST.includes(baseHostName)) {
-      realm = 'instagram';
-      console.log('Instagram realm');
-    } else if (
-      baseHostName.includes('workers.dev') ||
-      baseHostName.includes('localhost') ||
-      baseHostName.includes('127.0.0.1')
-    ) {
-      realm = '';
-      console.log(
-        `Domain not assigned to realm, falling back to root as we are on workers.dev: ${url.hostname}`
-      );
-    } else {
-      console.log(`Domain not assigned to realm, falling back to Twitter: ${url.hostname}`);
-    }
-    /* Defaults to Twitter realm if unknown domain specified (such as the *.workers.dev hostname) */
 
-    if (realm) {
-      console.log(`/${realm}${url.pathname}`);
-      return `/${realm}${url.pathname}`;
-    } else {
-      console.log(`${url.pathname}`);
-      return `${url.pathname}`;
+    /* Operators who route a dedicated hostname to the JSON APIs keep that behaviour. These lists
+       are empty by default, in which case the APIs are reached by path prefix like everything
+       else. Matched on the full hostname, not a suffix. */
+    if (Constants.API_HOST_LIST.includes(url.hostname)) {
+      return `/api${url.pathname}`;
     }
+    if (Constants.BLUESKY_API_HOST_LIST.includes(url.hostname)) {
+      return `/blueskyapi${url.pathname}`;
+    }
+    if (Constants.ATMOSPHERE_API_HOST_LIST.includes(url.hostname)) {
+      return `/atmosphere${url.pathname}`;
+    }
+
+    /* Otherwise the URL shape decides. See src/routing/identify.ts for why hostname-based realms
+       cannot work on a single-domain deployment. */
+    const { realm, path } = identifyRealm(url);
+    console.log(`${realm} realm: /${realm}${path}`);
+    return `/${realm}${path}`;
   }
 });
 
@@ -167,6 +150,13 @@ if (process.env.SENTRY_DSN) {
     })
   );
 }
+
+app.use('*', async (c, next) => {
+  /* Import the media signing key once per isolate. Minting happens inside the provider processors,
+     which never see the Worker env, so the pipeline primes it here on the way in. */
+  mediaSigningKey(c.env?.MEDIA_SIGNING_KEY);
+  await next();
+});
 
 app.use('*', async (c, next) => {
   /* Apply all headers from Constants.RESPONSE_HEADERS */
@@ -192,7 +182,7 @@ app.onError((err, c) => {
   const branding = getBranding(c);
 
   return c.html(
-    Strings.ERROR_HTML.format({ brandingName: branding.name }),
+    interpolate(Strings.ERROR_HTML, { brandingName: branding.name }),
     errorCode as ContentfulStatusCode
   );
 });
@@ -233,27 +223,6 @@ app.use('*', async (c, next) => {
 app.use('*', cacheMiddleware());
 app.use('*', timing({ enabled: false }));
 
-app.get('/', c => {
-  c.header('cache-control', noCache);
-  return c.text(
-    `You're running FxEmbed locally without a host header set to a valid realm domain. This means instead of falling back to Twitter realm, we expose all of them for you to poke at.
-
-    To get responses from a particular realm, set the Host header (set in .env), for example:
-      curl -H "Host: fxtwitter.com" "http://localhost:8787/user/status/123"
-    
-    Or you can access all realms by their path prefix:
-      /twitter/...     FxTwitter / FixupX
-      /bluesky/...     FxBluesky
-      /tiktok/...      FixTok
-      /instagram/...   FxInstagram
-      /api/...         FxTwitter API
-      /blueskyapi/...  FxBluesky API
-      /atmosphere/...  Atmosphere API (multi-provider)
-    `,
-    200
-  );
-});
-
 app.route(`/api`, api);
 app.route(`/blueskyapi`, blueskyApi);
 app.route(`/atmosphere`, atmosphere);
@@ -262,13 +231,19 @@ app.route(`/bluesky`, bluesky);
 app.route(`/tiktok`, tiktok);
 app.route(`/instagram`, instagram);
 
+/* Signed media, reached as /_/m/:token/:name — see src/routing/identify.ts for the rewrite. */
+app.get(`/media/:token`, mediaRequest);
+app.get(`/media/:token/:name`, mediaRequest);
+app.options(`/media/:token`, mediaOptions);
+app.options(`/media/:token/:name`, mediaOptions);
+
 app.all('/error', async c => {
   c.header('cache-control', noCache);
 
   /* We return it as a 200 so embedded applications can display the error */
   if (c.req.header('User-Agent')?.match(embeddingClientRegex)) {
     const branding = getBranding(c);
-    return c.html(Strings.ERROR_HTML.format({ brandingName: branding.name }), 200);
+    return c.html(interpolate(Strings.ERROR_HTML, { brandingName: branding.name }), 200);
   }
   return c.body('', 400);
 });
@@ -294,8 +269,8 @@ export default {
 
       return new Response(
         e.name === 'AbortError'
-          ? Strings.TIMEOUT_ERROR_HTML.format({ brandingName: branding.name })
-          : Strings.ERROR_HTML.format({ brandingName: branding.name }),
+          ? interpolate(Strings.TIMEOUT_ERROR_HTML, { brandingName: branding.name })
+          : interpolate(Strings.ERROR_HTML, { brandingName: branding.name }),
         {
           headers: {
             ...Constants.RESPONSE_HEADERS,

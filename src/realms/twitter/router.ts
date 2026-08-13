@@ -1,4 +1,5 @@
 import { Context, Hono } from 'hono';
+import { ANY_PUBLIC_HOST, guardedFetch } from '@fxembed/atmosphere/net';
 // import { cache } from "hono/cache";
 import { versionRoute } from '../common/version';
 import { Strings } from '../../strings';
@@ -44,14 +45,31 @@ export const getBaseRedirectUrl = (c: Context) => {
   return Constants.TWITTER_ROOT;
 };
 
+/** An icon. Anything appreciably larger is not one, and we should not be relaying it. */
+const MAX_FAVICON_BYTES = 1024 * 1024;
+
 export const faviconRoute = async (c: Context) => {
   const branding = getBranding(c);
   try {
-    const response = await fetch(branding.favicon);
-    const body = await response.arrayBuffer();
-    return c.body(body, response.status as ContentfulStatusCode, {
-      'Content-Type': response.headers.get('Content-Type') || 'image/x-icon',
-      'Content-Length': response.headers.get('Content-Length') || body.byteLength.toString()
+    /* The favicon URL comes from branding config rather than the request, but it is still a
+       remote fetch whose body we hand straight to the client, so it goes through the guard for
+       the timeout and size ceiling. Streamed rather than buffered into memory first. */
+    const response = await guardedFetch(
+      branding.favicon,
+      {},
+      {
+        hostPolicy: ANY_PUBLIC_HOST,
+        maxBytes: MAX_FAVICON_BYTES,
+        timeoutMs: 3_000
+      }
+    );
+
+    if (!response.body) {
+      return c.redirect(branding.favicon, 302);
+    }
+
+    return c.body(response.body, response.status as ContentfulStatusCode, {
+      'Content-Type': response.headers.get('Content-Type') || 'image/x-icon'
     });
   } catch (_e) {
     return c.redirect(branding.favicon, 302);

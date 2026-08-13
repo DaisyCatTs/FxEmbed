@@ -1,5 +1,15 @@
 import type { ProxyEnv } from '../../../types/proxy-credentials.js';
 
+import { allowHosts, guardedFetch } from '../../../net/index.js';
+
+/* Outbound requests go through the shared guard: host allowlist, https-only,
+   redirect re-validation, timeout and a response size ceiling. */
+const discordFetch = (input: string | URL | Request, init: RequestInit = {}) =>
+  guardedFetch(input, init, {
+    hostPolicy: allowHosts('discord.com', 'discordapp.com'),
+    signal: init.signal ?? undefined
+  });
+
 /** Discord embed field values max out at 1024 chars. */
 const DISCORD_FIELD_TRUNCATE = 1000;
 
@@ -99,7 +109,7 @@ export async function sendDiscordAlert(
     ]
   });
   console.log('body', body);
-  const discordResponse = await fetch(env.EXCEPTION_DISCORD_WEBHOOK, {
+  const discordResponse = await discordFetch(env.EXCEPTION_DISCORD_WEBHOOK, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body

@@ -10,7 +10,21 @@ analytics_engine_datasets = [
 ]
 
 # Use .env to configure environment variables, not wrangler.toml
-# except CREDENTIAL_KEY and EXCEPTION_DISCORD_WEBHOOK, which should be set using `wrangler secret put CREDENTIAL_KEY`
+# except CREDENTIAL_KEY, EXCEPTION_DISCORD_WEBHOOK and MEDIA_SIGNING_KEY, which should be set using
+# `wrangler secret put CREDENTIAL_KEY` and so on.
+#
+# MEDIA_SIGNING_KEY signs the media links at /_/m/:token. It must be at least 32 bytes, and it must
+# be a secret rather than a .env value: .env is inlined into the bundle at build time, and a signing
+# key that ships inside the artefact is not a secret. Without it TikTok videos fall back to the raw
+# CDN URL, which TikTok usually refuses to serve to an embedding client.
 
 [build]
 command = "npm run build"
+# Bind the Worker to your public domain. Without this, `wrangler deploy` only publishes to
+# <name>.<subdomain>.workers.dev. Requires a proxied ("orange cloud") DNS record in that zone.
+# routes = [{ pattern = "e.puppygirl.city/*", zone_name = "puppygirl.city" }]
+
+# Do NOT add a [build] section. It makes wrangler re-run the build in its own environment right
+# before uploading, which overwrites the bundle you just built — and it runs without .env, so the
+# deployed worker ends up with no configuration. `npm run deploy` builds first, then uploads
+# with --no-bundle.

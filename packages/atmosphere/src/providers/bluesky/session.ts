@@ -1,5 +1,15 @@
 import type { BlueskyProxyCredentials } from '../../types/proxy-credentials.js';
 
+import { NetPolicies, guardedFetch } from '../../net/index.js';
+
+/* Outbound requests go through the shared guard: host allowlist, https-only,
+   redirect re-validation, timeout and a response size ceiling. */
+const pdsFetch = (input: string | URL | Request, init: RequestInit = {}) =>
+  guardedFetch(input, init, {
+    hostPolicy: NetPolicies.blueskyPds,
+    signal: init.signal ?? undefined
+  });
+
 const SESSION_FETCH_TIMEOUT_MS = 8_000;
 
 export type CachedBlueskySession = {
@@ -42,7 +52,7 @@ async function createSession(cred: BlueskyProxyCredentials): Promise<CachedBlues
   const ac = new AbortController();
   const t = setTimeout(() => ac.abort(), SESSION_FETCH_TIMEOUT_MS);
   try {
-    const res = await fetch(`${base}/xrpc/com.atproto.server.createSession`, {
+    const res = await pdsFetch(`${base}/xrpc/com.atproto.server.createSession`, {
       method: 'POST',
       signal: ac.signal,
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
@@ -69,7 +79,7 @@ async function refreshSession(
   const ac = new AbortController();
   const t = setTimeout(() => ac.abort(), SESSION_FETCH_TIMEOUT_MS);
   try {
-    const res = await fetch(`${base}/xrpc/com.atproto.server.refreshSession`, {
+    const res = await pdsFetch(`${base}/xrpc/com.atproto.server.refreshSession`, {
       method: 'POST',
       signal: ac.signal,
       headers: {

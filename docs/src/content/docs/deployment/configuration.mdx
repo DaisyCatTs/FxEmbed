@@ -91,10 +91,31 @@ Some values should be set as Wrangler secrets rather than in `.env` or `wrangler
 ```bash
 wrangler secret put CREDENTIAL_KEY
 wrangler secret put EXCEPTION_DISCORD_WEBHOOK
+wrangler secret put MEDIA_SIGNING_KEY
 ```
 
 - **`CREDENTIAL_KEY`**: Encryption key for credential storage
 - **`EXCEPTION_DISCORD_WEBHOOK`**: Discord webhook URL for exception notifications
+- **`MEDIA_SIGNING_KEY`**: HMAC key for signed media links (at least 32 bytes)
+
+These are secrets rather than `.env` values on purpose: the build inlines `.env` into the bundle,
+so anything placed there ships inside the deployed artefact.
+
+### Signed media links
+
+Most providers' CDNs serve media to embedding clients directly, and the worker leaves those URLs
+alone. TikTok's CDN does not: it rejects any request that does not carry a browser-shaped header set
+plus the cookies handed out with the video page. Those videos are delivered through the worker at
+`/_/m/:token/:name`, where `:token` is an HMAC-signed blob containing the upstream URL, the provider,
+an expiry, and the cookies the CDN needs.
+
+The endpoint fetches nothing that is not named inside a valid token, and re-checks the URL against
+the provider's host allowlist at request time, so tightening the allowlist retroactively invalidates
+links already in the wild.
+
+With `MEDIA_SIGNING_KEY` unset the worker refuses to mint links (it emits the raw CDN URL instead,
+which TikTok will usually refuse) and `/_/m/...` answers `503`. It never falls back to unsigned
+links.
 
 ## Branding
 

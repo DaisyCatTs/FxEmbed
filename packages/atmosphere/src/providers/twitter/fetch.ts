@@ -7,6 +7,16 @@ import { getTwitterProviderEnv, getTwitterProxyRuntime } from '../twitter-runtim
 import { proxyTwitterRequest } from './proxy/handler.js';
 import type { TwitterBuildHost } from './build-host.js';
 
+import { NetPolicies, guardedFetch } from '../../net/index.js';
+
+/* Outbound requests go through the shared guard: host allowlist, https-only,
+   redirect re-validation, timeout and a response size ceiling. */
+const xFetch = (input: string | URL | Request, init: RequestInit = {}) =>
+  guardedFetch(input, init, {
+    hostPolicy: NetPolicies.twitterApi,
+    signal: init.signal ?? undefined
+  });
+
 const API_ATTEMPTS = 3;
 
 interface TwitterFetchOptions {
@@ -108,7 +118,7 @@ export const twitterFetch = async (
 
     if (newTokenGenerated || (activate === null && !useElongator)) {
       const timeBefore = performance.now();
-      activate = await fetch(guestTokenRequest.clone());
+      activate = await xFetch(guestTokenRequest.clone());
       const timeAfter = performance.now();
 
       console.log(`Guest token request after ${timeAfter - timeBefore}ms`);
@@ -182,7 +192,7 @@ export const twitterFetch = async (
         } else {
           console.log('CREDENTIAL_KEY set but no bundled accounts; using guest API');
           apiRequest = await withTimeout((signal: AbortSignal) =>
-            fetch(url, {
+            xFetch(url, {
               method: method,
               headers: headers,
               signal: signal,
@@ -197,7 +207,7 @@ export const twitterFetch = async (
       } else {
         const performanceStart = performance.now();
         apiRequest = await withTimeout((signal: AbortSignal) =>
-          fetch(url, {
+          xFetch(url, {
             method: method,
             headers: headers,
             signal: signal,

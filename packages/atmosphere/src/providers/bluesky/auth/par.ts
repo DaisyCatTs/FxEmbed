@@ -2,6 +2,7 @@ import type { AuthServerMetadata, DpopKeypairJwk } from './types.js';
 import { signDpopProof } from './dpop.js';
 import { formEncode, readDpopNonceFromResponse, responseRequestsDpopNonce } from './oauth-http.js';
 
+import { publicGuardedFetch } from '../../../net/index.js';
 export type PushParParams = {
   metadata: AuthServerMetadata;
   clientId: string;
@@ -31,7 +32,7 @@ export async function pushAuthorizationRequest(
   const parUrl = params.metadata.pushed_authorization_request_endpoint;
   if (!parUrl) return null;
 
-  const fetchImpl = params.fetchImpl ?? fetch;
+  const fetchImpl = params.fetchImpl ?? publicGuardedFetch;
   const body: Record<string, string> = {
     client_id: params.clientId,
     redirect_uri: params.redirectUri,
