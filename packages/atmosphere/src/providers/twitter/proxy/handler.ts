@@ -23,7 +23,17 @@ const xFetch = (input: string | URL | Request, init: RequestInit = {}) =>
     signal: init.signal ?? undefined
   });
 
-const redactUsername = false;
+/**
+ * Keep the account handle out of logs.
+ *
+ * These credentials belong to a personal X account, and the handle was being written in plaintext
+ * on every proxy attempt and every malformed-credential warning. Worker logs are not public, but
+ * they surface in `wrangler tail`, in the Cloudflare dashboard, in anything Logpush is wired to,
+ * and in screenshots — none of which should be able to reveal whose account is behind the
+ * deployment. Failures stay just as diagnosable: the attempt number, status and error are all
+ * still logged.
+ */
+const redactUsername = true;
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   if (value !== null && typeof value === 'object') {
@@ -165,7 +175,11 @@ export async function proxyTwitterRequest(request: Request, env: ProxyEnv): Prom
           try {
             await sendDiscordAlert(
               env,
-              username,
+              /* Same redaction as the logs. The webhook wraps this in Discord spoiler bars, which
+                 hides it from a glance but not from anyone who clicks — that is obfuscation, not
+                 redaction, and an alert channel is exactly where a personal handle should not be
+                 sitting one tap away. */
+              redactUsername ? '[REDACTED]' : username,
               requestPath,
               asRecord(json)?.['errors'],
               variablesDisplay
