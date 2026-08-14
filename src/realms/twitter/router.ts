@@ -2,6 +2,7 @@ import { Context, Hono } from 'hono';
 import { ANY_PUBLIC_HOST, guardedFetch } from '@fxembed/atmosphere/net';
 // import { cache } from "hono/cache";
 import { versionRoute } from '../common/version';
+import { logoRoute } from './routes/logo';
 import { Strings } from '../../strings';
 import { Constants } from '../../constants';
 import { genericTwitterRedirect, setRedirectRequest } from './routes/redirects';
@@ -121,6 +122,9 @@ twitter.get('/version', c => versionRoute(c));
 twitter.get('/set_base_redirect', setRedirectRequest);
 /* Yes, I actually made the endpoint /owoembed. Deal with it. */
 twitter.get('/owoembed', oembed);
+
+/* Self-hosted brand assets, so branding.json never has to point at a third-party CDN. */
+twitter.get('/_/logo/:name', logoRoute);
 
 twitter.get('/robots.txt', async c => c.text(Strings.ROBOTS_TXT));
 twitter.get('/favicon.ico', faviconRoute);

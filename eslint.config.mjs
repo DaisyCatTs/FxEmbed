@@ -5,10 +5,26 @@ import { defineConfig } from 'eslint/config';
 import eslintPluginPrettierRecommended from 'eslint-plugin-prettier/recommended';
 
 export default defineConfig([
+  {
+    /* Global ignore. In flat config an `ignores` key alongside `files` only scopes that one block,
+       so machine-generated output has to be excluded here to be excluded at all.
+       `src/generated/**` is written by tools/make-logo.mjs and never hand-edited. */
+    ignores: ['src/generated/**']
+  },
   eslintPluginPrettierRecommended,
   {
     files: ['src/**/*.ts'],
-    ignores: ['**/node_modules/**', '**/dist/**', '**/*.js', '**/*.mjs', '**/*.cjs'],
+    ignores: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/*.js',
+      '**/*.mjs',
+      '**/*.cjs',
+      /* Machine output from tools/make-logo.mjs — regenerated, never hand-edited, and its long
+         base64 literals are not worth reformatting. Mirrors the atmosphere config's exclusion of
+         src/relay/generated. */
+      'src/generated/**'
+    ],
     plugins: { js },
     extends: ['js/recommended'],
     rules: {
