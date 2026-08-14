@@ -16,7 +16,8 @@ export const versionRoute = async (c: Context) => {
     return c.html(
       interpolate(Strings.VERSION_HTML, {
         brandingName,
-        ogDescription: `Build${Constants.RELEASE_NAME} (${runtime})`,
+        /* Same reasoning as the x-powered-by header: publish the build, not the branch name. */
+        ogDescription: `Build ${Constants.PUBLIC_VERSION} (${runtime})`,
         statsBody: '',
         runtime
       })

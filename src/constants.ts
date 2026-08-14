@@ -37,6 +37,8 @@ export const Constants = {
   ATMOSPHERE_API_HOST_LIST: domainList(process.env.ATMOSPHERE_API_HOST_LIST),
   ATMOSPHERE_API_HOST_ROOT: firstOrigin(process.env.ATMOSPHERE_API_HOST_LIST),
   RELEASE_NAME: process.env.RELEASE_NAME || 'local',
+  /* Build id safe for public responses: no branch name, no build timestamp. */
+  PUBLIC_VERSION: process.env.PUBLIC_VERSION || 'local',
   GIF_TRANSCODE_DOMAIN_LIST: domainList(process.env.GIF_TRANSCODE_DOMAIN_LIST),
   VIDEO_TRANSCODE_DOMAIN_LIST: domainList(process.env.VIDEO_TRANSCODE_DOMAIN_LIST),
   VIDEO_TRANSCODE_BSKY_DOMAIN_LIST: domainList(process.env.VIDEO_TRANSCODE_BSKY_DOMAIN_LIST),
@@ -97,7 +99,9 @@ export const Constants = {
   RESPONSE_HEADERS: {
     'allow': 'OPTIONS, GET, HEAD',
     'content-type': 'text/html;charset=UTF-8',
-    'x-powered-by': `${process.env.RELEASE_NAME || 'local'}`,
+    /* Public build identifier. Deliberately not RELEASE_NAME, which embeds the branch name and
+       build timestamp — see esbuild.config.mjs. */
+    'x-powered-by': `${process.env.PUBLIC_VERSION || 'local'}`,
     'x-trans-rights': 'true',
     'Vary': 'Accept-Encoding, User-Agent'
   },

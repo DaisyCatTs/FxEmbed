@@ -72,6 +72,12 @@ for (let envVar of envVariables) {
 
 defines['process.env.RELEASE_NAME'] = JSON.stringify(releaseName);
 
+/* Version string safe to publish on every response. The full release name carries the branch and
+   build timestamp, which are useful for Sentry but tell the public more about our workflow than
+   they need to know — an `x-powered-by` reading `...-rebuild-phase-0-media-fix-...` announces
+   internal branch names to anyone reading headers. The commit alone still identifies the build. */
+defines['process.env.PUBLIC_VERSION'] = JSON.stringify(`${workerName}-${gitCommit}`);
+
 try {
   const raw = fs.readFileSync('credentials.enc.json', 'utf-8');
   let enc;

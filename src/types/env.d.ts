@@ -26,6 +26,8 @@ declare namespace NodeJS {
     INSTAGRAM_ROOT?: string;
     SENTRY_DSN?: string;
     RELEASE_NAME?: string;
+    /** Build id safe to publish publicly: worker name + commit, no branch or timestamp. */
+    PUBLIC_VERSION?: string;
     /** Inlined from credentials.enc.json at build (see esbuild.config.mjs). */
     ENCRYPTED_CREDENTIALS?: string;
     CREDENTIALS_IV?: string;
