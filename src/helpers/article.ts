@@ -1,5 +1,5 @@
 import { Constants } from '../constants';
-import { sanitizeText, truncateWithEllipsis, wrapForeignLinks } from './utils';
+import { sanitizeText, truncateWithEllipsis } from './utils';
 
 const DISCORD_ARTICLE_MAX_LENGTH = 10000;
 
@@ -7,7 +7,6 @@ interface ArticleRenderOptions {
   maxLength?: number; // undefined = no limit (Telegram)
   fullRenderer?: boolean; // true for Telegram, false for Discord
   mediaEntities: TwitterApiMedia[];
-  apiHost?: string; // Required for Telegram to wrap foreign links
   photoUrlTransform?: (url: string) => string;
 }
 
@@ -46,9 +45,8 @@ interface BlockDataEntitySpan {
 /**
  * Collects all inline links (mentions, URLs, hashtags) from block data
  * @param block The content block
- * @param apiHost Optional API host for wrapping foreign links (for Telegram)
  */
-const collectInlineLinks = (block: TwitterArticleContentBlock, apiHost?: string): InlineLink[] => {
+const collectInlineLinks = (block: TwitterArticleContentBlock): InlineLink[] => {
   const links: InlineLink[] = [];
   const data = block.data;
 
@@ -64,14 +62,13 @@ const collectInlineLinks = (block: TwitterArticleContentBlock, apiHost?: string)
     }
   }
 
-  // Process URLs -> use the URL as the link (wrap for Telegram if apiHost provided)
+  // Process URLs -> use the URL as the link
   if (Array.isArray(data.urls)) {
     for (const url of data.urls as BlockDataEntitySpan[]) {
-      const href = apiHost ? wrapForeignLinks(url.text, apiHost) : url.text;
       links.push({
         fromIndex: url.fromIndex,
         toIndex: url.toIndex,
-        href,
+        href: url.text,
         text: url.text
       });
     }
@@ -405,8 +402,7 @@ const renderBlock = (
   }
 
   // Collect inline links (mentions, URLs, hashtags)
-  // Pass apiHost for Telegram to wrap foreign links
-  const inlineLinks = collectInlineLinks(block, options.apiHost);
+  const inlineLinks = collectInlineLinks(block);
 
   // Apply inline styles and links
   const styledText = applyInlineStylesAndLinks(blockText, block.inlineStyleRanges, inlineLinks);

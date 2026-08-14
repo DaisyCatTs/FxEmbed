@@ -1,7 +1,6 @@
 import { Context } from 'hono';
-import { Strings } from '../../../strings';
 import { getBranding } from '../../../helpers/branding';
-import { OEmbed } from '../../../types/types';
+import { oembedResponse } from '../../../render/oembed';
 import { assertSafeMastodonDomain } from '@fxembed/atmosphere/providers/mastodon/client';
 
 /**
@@ -29,21 +28,10 @@ export const oembed = async (c: Context) => {
 
   const text = searchParams.get('text') ?? '';
   const author = searchParams.get('author') ?? '';
-  const branding = getBranding(c);
 
   /* Unlike every other provider there is no single web root to fall back on — a fediverse account
      only exists on its own instance — so an unusable acct falls back to the branding redirect. */
-  const authorUrl = profileUrlFromAcct(author) ?? branding.redirect;
+  const authorUrl = profileUrlFromAcct(author) ?? getBranding(c).redirect;
 
-  const data: OEmbed = {
-    author_name: text,
-    author_url: authorUrl,
-    provider_name: branding.name,
-    provider_url: searchParams.get('provider') ? authorUrl : branding.redirect,
-    title: Strings.DEFAULT_AUTHOR_TEXT,
-    type: 'rich',
-    version: '1.0'
-  };
-
-  return c.json(data, 200);
+  return oembedResponse(c, { text, authorUrl });
 };

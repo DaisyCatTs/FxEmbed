@@ -6,12 +6,6 @@ import { versionRoute } from '../common/version';
 import { genericBlueskyRedirect } from './routes/redirects';
 import { activityRequest } from './routes/activity';
 import { getBranding } from '../../helpers/branding';
-import {
-  profileFeedAtomBluesky,
-  profileFeedRssBluesky,
-  profileMediaFeedAtomBluesky,
-  profileMediaFeedRssBluesky
-} from './routes/feed';
 
 export const bluesky = new Hono();
 
@@ -22,10 +16,6 @@ bluesky.get('/:prefix/:handle/post/:id', blueskyStatusRequest);
 bluesky.get('/profile/:handle/post/:id', blueskyStatusRequest);
 bluesky.get('/:prefix/profile/:handle/post/:id/:language', blueskyStatusRequest);
 bluesky.get('/profile/:handle/post/:id/:language', blueskyStatusRequest);
-bluesky.get('/profile/:handle/feed.xml', profileFeedRssBluesky);
-bluesky.get('/profile/:handle/feed.atom.xml', profileFeedAtomBluesky);
-bluesky.get('/profile/:handle/media.xml', profileMediaFeedRssBluesky);
-bluesky.get('/profile/:handle/media.atom.xml', profileMediaFeedAtomBluesky);
 bluesky.get('/profile/*', genericBlueskyRedirect);
 bluesky.get('/version', c => versionRoute(c));
 

@@ -2,7 +2,6 @@ import { Context } from 'hono';
 import { handleStatus, returnError } from '../../../embed/status';
 import { DataProvider } from '../../../enum';
 import { Constants } from '../../../constants';
-import { Experiment, experimentCheck } from '../../../experiments';
 import { Strings } from '../../../strings';
 import { InputFlags } from '../../../types/types';
 import { assertSafeMastodonDomain } from '@fxembed/atmosphere/providers/mastodon/client';
@@ -99,14 +98,6 @@ export const mastodonStatusRequest = async (c: Context) => {
   } else if (Constants.TEXT_ONLY_DOMAINS.includes(url.hostname)) {
     console.log('Text-only embed request');
     flags.textOnly = true;
-  } else if (Constants.INSTANT_VIEW_DOMAINS.includes(url.hostname)) {
-    console.log('Forced instant view request');
-    flags.forceInstantView = true;
-  } else if (
-    experimentCheck(Experiment.IV_FORCE_THREAD_UNROLL, userAgent.includes('TelegramBot'))
-  ) {
-    console.log('Forced unroll instant view');
-    flags.instantViewUnrollThreads = true;
   } else if (Constants.GALLERY_DOMAINS.includes(url.hostname)) {
     console.log('Gallery embed request');
     flags.gallery = true;
@@ -118,7 +109,7 @@ export const mastodonStatusRequest = async (c: Context) => {
     flags.noActivity = true;
   }
 
-  if (!isBotUA && !flags.direct && !flags.api) {
+  if (!isBotUA && !flags.direct) {
     console.log('Matched human UA', userAgent);
     return c.redirect(await resolveDestination(c, instance, statusId, bareHandle(handle)), 302);
   }

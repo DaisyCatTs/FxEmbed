@@ -7,7 +7,7 @@ import {
 } from '@fxembed/atmosphere/helpers';
 import { normalizeLanguage } from './language';
 import translationResources from '../../i18n/resources';
-import type { APITombstoneReason, APIStatusTombstone } from '../realms/api/schemas';
+import type { APITombstoneReason, APIStatusTombstone } from '@fxembed/atmosphere/types/api-schemas';
 
 export { isTombstone, stripTombstones };
 

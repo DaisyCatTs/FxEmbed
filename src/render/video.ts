@@ -3,7 +3,7 @@ import { Constants } from '../constants';
 import { Experiment, experimentCheck } from '../experiments';
 import { handleQuote } from '../helpers/quote';
 import { DataProvider } from '../enum';
-import type { APITwitterStatus } from '../realms/api/schemas';
+import type { APITwitterStatus } from '@fxembed/atmosphere/types/api-schemas';
 import { getBranding } from '../helpers/branding';
 import { getGIFTranscodeDomain, shouldTranscodeGif } from '../helpers/giftranscode';
 import { getVideoTranscodeDomain, getVideoTranscodeDomainBluesky } from '../helpers/transcode';
@@ -90,12 +90,6 @@ export const renderVideo = (
         ? getVideoTranscodeDomain(status.id)
         : getVideoTranscodeDomainBluesky(status.id);
     url = `https://${domain}${new URL(url).pathname}`;
-  } else if (
-    experimentCheck(Experiment.VIDEO_REDIRECT_WORKAROUND, Constants.API_HOST_LIST.length > 0) &&
-    (userAgent?.includes('Discordbot') || userAgent?.includes('TelegramBot')) &&
-    status.provider !== DataProvider.TikTok
-  ) {
-    url = `https://${Constants.API_HOST_LIST[0]}/2/go?url=${encodeURIComponent(url)}`;
   }
 
   /* Push the video-related tags */

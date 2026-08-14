@@ -16,7 +16,9 @@ export function twitterBuildHostFromContext(c: Context): TwitterBuildHost {
     twitterProxy: c.env?.TwitterProxy,
     analyticsEngine: c.env?.AnalyticsEngine,
     exceptionWebhookUrl: c.env?.EXCEPTION_DISCORD_WEBHOOK,
-    waitUntil: p => c.executionCtx?.waitUntil(p),
+    /* The host interface accepts any value; `waitUntil` only takes a promise. `Promise.resolve`
+       passes a promise straight through and makes anything else an already-settled one. */
+    waitUntil: p => c.executionCtx?.waitUntil(Promise.resolve(p)),
     request: {
       url: c.req.url,
       cf: c.req.raw?.cf,

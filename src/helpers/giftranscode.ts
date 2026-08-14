@@ -10,8 +10,6 @@ export const shouldTranscodeGif = (c: Context) => {
   return (
     experimentCheck(Experiment.TRANSCODE_GIFS, Constants.GIF_TRANSCODE_DOMAIN_LIST.length > 0) &&
     !c.req.header('user-agent')?.includes('TelegramBot') &&
-    !Constants.OLD_EMBED_DOMAINS.includes(new URL(c.req.url).hostname) &&
-    !Constants.API_HOST_LIST.includes(new URL(c.req.url).hostname) &&
-    !Constants.BLUESKY_API_HOST_LIST.includes(new URL(c.req.url).hostname)
+    !Constants.OLD_EMBED_DOMAINS.includes(new URL(c.req.url).hostname)
   );
 };

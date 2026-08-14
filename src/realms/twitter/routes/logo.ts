@@ -12,10 +12,12 @@ import { LOGO_PNG_BASE64, LOGO_SVG } from '../../../generated/logo-assets';
 
 const ONE_YEAR = 'public, max-age=31536000, immutable';
 
-/* Decoded once per isolate rather than per request; the set is a few KB. */
-const pngCache = new Map<string, Uint8Array>();
+/* Decoded once per isolate rather than per request; the set is a few KB.
+   Explicitly backed by ArrayBuffer (not the wider ArrayBufferLike, which admits SharedArrayBuffer)
+   because that is what a response body accepts. */
+const pngCache = new Map<string, Uint8Array<ArrayBuffer>>();
 
-const decode = (base64: string): Uint8Array =>
+const decode = (base64: string): Uint8Array<ArrayBuffer> =>
   Uint8Array.from(atob(base64), char => char.charCodeAt(0));
 
 export const logoRoute = async (c: Context) => {

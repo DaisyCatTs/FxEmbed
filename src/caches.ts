@@ -136,21 +136,14 @@ export const cacheMiddleware = (): MiddlewareHandler => async (c, next) => {
   }
 
   let cacheKey: Request;
-  const apiRealmHost =
-    Constants.API_HOST_LIST.includes(requestUrl.hostname) ||
-    Constants.BLUESKY_API_HOST_LIST.includes(requestUrl.hostname) ||
-    Constants.ATMOSPHERE_API_HOST_LIST.includes(requestUrl.hostname);
-  const returnAsJson = apiRealmHost;
 
   /* Requests we neither read from nor write to the cache. Reads and writes have to agree: guarding
      only the read (as this used to) still filled the cache with entries nothing could ever hit, and
      stored `base_redirect` responses under the key everyone else reads.
 
-     - API realms answer with live JSON, and callers expect it to be current.
      - `/api/v1/statuses` is the Discord activity endpoint, which carries live poll results.
      - A `base_redirect` cookie makes the response specific to the visitor who set it. */
   const skipCache =
-    apiRealmHost ||
     requestUrl.pathname.startsWith('/api/v1/statuses') ||
     (request.header('Cookie')?.includes('base_redirect') ?? false);
 
@@ -215,7 +208,6 @@ export const cacheMiddleware = (): MiddlewareHandler => async (c, next) => {
        expose it as an unauthenticated HTTP verb. */
     /* yes, we do give HEAD */
     case 'HEAD':
-      if (returnAsJson) return c.json('');
       return c.html('');
     /* We properly state our OPTIONS when asked */
     case 'OPTIONS':
@@ -227,7 +219,6 @@ export const cacheMiddleware = (): MiddlewareHandler => async (c, next) => {
       c.status(200);
       return c.body('');
     default:
-      if (returnAsJson) return c.json('');
       return c.html('', 405);
   }
 };

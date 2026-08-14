@@ -6,7 +6,6 @@ import { interpolate, Strings } from './strings';
 import { MetaTag, safeMetaUrl, serializeMeta } from './render/meta';
 import { userAPI } from '@fxembed/atmosphere/providers/twitter/profile';
 import { twitterBuildHostFromContext } from './providers/twitter/build-host-adapter';
-import { ContentfulStatusCode } from 'hono/utils/http-status';
 import { getBranding } from './helpers/branding';
 import { InputFlags } from './types/types';
 import { formatRuntime } from './helpers/runtime';
@@ -35,7 +34,7 @@ export const returnError = (c: Context, error: string): Response => {
 /**
  * X stores one avatar URL with the requested size baked into the filename (`..._normal.jpg` is
  * 48x48). Embedding that verbatim gives clients a thumbnail too small to be recognisable, so ask
- * for the 400px variant — the same trick the Instant View renderer uses.
+ * for the 400px variant.
  *
  * The lookahead keeps a query string (if one ever appears) intact, and `$2` collapses to an empty
  * string when the URL carries no file extension.
@@ -107,17 +106,6 @@ export const handleProfile = async (
   console.log('flags', JSON.stringify(flags));
   const api = await userAPI(username, twitterBuildHostFromContext(c), true);
   const user = api?.user as APIUser;
-
-  /* Catch this request if it's an API response */
-  // For now we just always return the API response while testing
-  if (flags?.api) {
-    c.status(api.code as ContentfulStatusCode);
-    // Add every header from Constants.API_RESPONSE_HEADERS
-    for (const [header, value] of Object.entries(Constants.API_RESPONSE_HEADERS)) {
-      c.header(header, value);
-    }
-    return c.json(api);
-  }
 
   /* If there was any errors fetching the User, we'll return it */
   switch (api.code) {

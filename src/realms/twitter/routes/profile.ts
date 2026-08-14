@@ -36,11 +36,6 @@ export const profileRequest = async (c: Context) => {
     return c.redirect(getBranding(c).redirect, 302);
   }
   const username = handle.match(/\w{1,15}/gi)?.[0] as string;
-  /* Check if request is to api.fxtwitter.com */
-  if (Constants.API_HOST_LIST.includes(url.hostname)) {
-    console.log('JSON API request');
-    flags.api = true;
-  }
 
   if (isHorizonEmbedParam(url)) {
     flags.horizon = true;
@@ -56,40 +51,12 @@ export const profileRequest = async (c: Context) => {
   if (cacheControl) {
     c.header('cache-control', cacheControl);
   }
-  /* Direct media or API access bypasses bot check, returning same response regardless of UA */
-  if (isBotUA || flags.api) {
-    if (isBotUA) {
-      console.log(`Matched bot UA ${userAgent}`);
-    } else {
-      console.log('Bypass bot check');
-    }
+  if (isBotUA) {
+    console.log(`Matched bot UA ${userAgent}`);
 
-    const profileResponse = await handleProfile(c, username, flags);
-
-    let newUrl = `${baseUrl}/${handle}`;
-    if (baseUrl.startsWith('twitter:/')) {
-      newUrl = `twitter://user?screen_name=${handle}`;
-    }
-    /* Check for custom redirect */
-
-    if (!isBotUA && !flags.api) {
-      if (flags.horizon) {
-        return c.redirect(horizonProfileUrl, 302);
-      }
-      if (experimentCheck(Experiment.USE_HORIZON_WEB, baseUrl === Constants.TWITTER_ROOT)) {
-        const appBody = await fetchHorizonProfilePage(handle);
-        if (appBody) {
-          return c.html(appBody, 200);
-        } else {
-          return c.redirect(newUrl, 302);
-        }
-      } else {
-        return c.redirect(newUrl, 302);
-      }
-    }
-
-    /* Return the response containing embed information */
-    return profileResponse;
+    /* The custom-redirect branch that used to live here was only reachable when the JSON API host
+       let a non-bot UA through this check, so it went with the API. A bot always gets the embed. */
+    return await handleProfile(c, username, flags);
   } else {
     /* A human has clicked a fxtwitter.com/:screen_name link!
         Obviously we just need to redirect to the user directly.*/

@@ -1,18 +1,12 @@
 /* Parse a comma-separated env var into a list of hosts.
    Must filter empties: a plain `''.split(',')` yields `['']`, which has length 1 and so passes
    every "is this feature configured?" guard, causing us to rewrite media URLs onto an empty host
-   (e.g. `https:///2/go?url=...`). An unconfigured list has to be genuinely empty. */
+   (e.g. `https:///media.mp4`). An unconfigured list has to be genuinely empty. */
 const domainList = (value: string | undefined): string[] =>
   (value ?? '')
     .split(',')
     .map(s => s.trim())
     .filter(Boolean);
-
-/* First host of a list as an origin, or '' when the list is empty. */
-const firstOrigin = (value: string | undefined): string => {
-  const host = domainList(value)[0];
-  return host ? `https://${host}` : '';
-};
 
 export const Constants = {
   /* Populated from process.env (.env under Bun/Node, or each key inlined by esbuild for Workers). */
@@ -22,7 +16,6 @@ export const Constants = {
   STANDARD_INSTAGRAM_DOMAIN_LIST: domainList(process.env.STANDARD_INSTAGRAM_DOMAIN_LIST),
   DIRECT_MEDIA_DOMAINS: domainList(process.env.DIRECT_MEDIA_DOMAINS),
   TEXT_ONLY_DOMAINS: domainList(process.env.TEXT_ONLY_DOMAINS),
-  INSTANT_VIEW_DOMAINS: domainList(process.env.INSTANT_VIEW_DOMAINS),
   GALLERY_DOMAINS: domainList(process.env.GALLERY_DOMAINS),
   FORCE_MOSAIC_DOMAINS: domainList(process.env.FORCE_MOSAIC_DOMAINS),
   OLD_EMBED_DOMAINS: domainList(process.env.OLD_EMBED_DOMAINS),
@@ -30,12 +23,6 @@ export const Constants = {
   MOSAIC_BSKY_DOMAIN_LIST: domainList(process.env.MOSAIC_BSKY_DOMAIN_LIST),
   POLYGLOT_DOMAIN_LIST: domainList(process.env.POLYGLOT_DOMAIN_LIST),
   POLYGLOT_ACCESS_TOKEN: process.env.POLYGLOT_ACCESS_TOKEN ?? '',
-  API_HOST_LIST: domainList(process.env.API_HOST_LIST),
-  API_HOST_ROOT: firstOrigin(process.env.API_HOST_LIST),
-  BLUESKY_API_HOST_LIST: domainList(process.env.BLUESKY_API_HOST_LIST),
-  BLUESKY_API_HOST_ROOT: firstOrigin(process.env.BLUESKY_API_HOST_LIST),
-  ATMOSPHERE_API_HOST_LIST: domainList(process.env.ATMOSPHERE_API_HOST_LIST),
-  ATMOSPHERE_API_HOST_ROOT: firstOrigin(process.env.ATMOSPHERE_API_HOST_LIST),
   RELEASE_NAME: process.env.RELEASE_NAME || 'local',
   /* Build id safe for public responses: no branch name, no build timestamp. */
   PUBLIC_VERSION: process.env.PUBLIC_VERSION || 'local',
@@ -43,7 +30,6 @@ export const Constants = {
   VIDEO_TRANSCODE_DOMAIN_LIST: domainList(process.env.VIDEO_TRANSCODE_DOMAIN_LIST),
   VIDEO_TRANSCODE_BSKY_DOMAIN_LIST: domainList(process.env.VIDEO_TRANSCODE_BSKY_DOMAIN_LIST),
   PBS_PROXY_DOMAIN_LIST: domainList(process.env.PBS_PROXY_DOMAIN_LIST),
-  API_DOCS_URL: `https://github.com/FxEmbed/FxEmbed/wiki/API-Home`,
   TWITTER_ROOT: process.env.TWITTER_ROOT || 'https://x.com',
   HORIZON_WEB_ROOT: 'https://app.fxtwitter.com',
   TWITTER_API_ROOT: 'https://api.x.com',

@@ -8,11 +8,8 @@ import type { MetaTag } from '../render/meta';
 export type InputFlags = {
   standard?: boolean;
   direct?: boolean;
-  api?: boolean;
   textOnly?: boolean;
   isXDomain?: boolean;
-  forceInstantView?: boolean;
-  instantViewUnrollThreads?: boolean;
   archive?: boolean;
   gallery?: boolean;
   forceMosaic?: boolean;
@@ -97,16 +94,6 @@ declare global {
 
   interface FetchResults {
     status: number;
-  }
-
-  interface OEmbed {
-    author_name?: string;
-    author_url?: string;
-    provider_name?: string;
-    provider_url?: string;
-    title?: string | null;
-    type: 'link' | 'rich';
-    version: '1.0';
   }
 
   // Mastodon API V1 Interfaces

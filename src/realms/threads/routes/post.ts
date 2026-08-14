@@ -2,7 +2,6 @@ import { Context } from 'hono';
 import { handleStatus } from '../../../embed/status';
 import { DataProvider } from '../../../enum';
 import { Constants } from '../../../constants';
-import { Experiment, experimentCheck } from '../../../experiments';
 import { Strings } from '../../../strings';
 import { InputFlags } from '../../../types/types';
 import { THREADS_WEB_ROOT } from '../../../providers/threads/web';
@@ -33,14 +32,6 @@ export const threadsPostRequest = async (c: Context) => {
   } else if (Constants.TEXT_ONLY_DOMAINS.includes(url.hostname)) {
     console.log('Text-only embed request');
     flags.textOnly = true;
-  } else if (Constants.INSTANT_VIEW_DOMAINS.includes(url.hostname)) {
-    console.log('Forced instant view request');
-    flags.forceInstantView = true;
-  } else if (
-    experimentCheck(Experiment.IV_FORCE_THREAD_UNROLL, userAgent.includes('TelegramBot'))
-  ) {
-    console.log('Forced unroll instant view');
-    flags.instantViewUnrollThreads = true;
   } else if (Constants.GALLERY_DOMAINS.includes(url.hostname)) {
     console.log('Gallery embed request');
     flags.gallery = true;
@@ -59,7 +50,7 @@ export const threadsPostRequest = async (c: Context) => {
     ? `${THREADS_WEB_ROOT}/@${encodeURIComponent(bareHandle)}/post/${encodeURIComponent(shortcode)}`
     : `${THREADS_WEB_ROOT}/t/${encodeURIComponent(shortcode)}`;
 
-  if (!isBotUA && !flags.direct && !flags.api) {
+  if (!isBotUA && !flags.direct) {
     console.log('Matched human UA', userAgent);
     return c.redirect(threadsUrl, 302);
   }

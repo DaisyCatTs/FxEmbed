@@ -1,5 +1,4 @@
 import { Context } from 'hono';
-import { ContentfulStatusCode } from 'hono/utils/http-status';
 import i18next from 'i18next';
 import icu from 'i18next-icu';
 import { Constants } from '../constants';
@@ -9,11 +8,10 @@ import { formatImageUrl, truncateWithEllipsis } from '../helpers/utils';
 import { proxyTwitterPostPhotoUrl, shouldProxyTelegramPbsPhotos } from '../helpers/pbsProxy';
 import { interpolate, Strings } from '../strings';
 import { MetaTag, safeMetaUrl, serializeMeta } from '../render/meta';
-import { escapeAttr, Html, raw } from '../render/html';
+import { escapeAttr, Html } from '../render/html';
 import { getSocialProof } from '../helpers/socialproof';
 import { renderPhoto } from '../render/photo';
 import { renderVideo } from '../render/video';
-import { renderInstantView } from '../render/instantview';
 import { constructTwitterThread } from '@fxembed/atmosphere/providers/twitter/conversation';
 import { twitterBuildHostFromContext } from '../providers/twitter/build-host-adapter';
 import { Experiment, experimentCheck } from '../experiments';
@@ -25,7 +23,7 @@ import { encodeSnowcode } from '../helpers/snowcode';
 import { hasBundledEncryptedCredentials } from '../providers/twitter/proxy/credentials';
 import { ACTIVITY_PROVIDER_MARKERS } from '../routing/identify';
 import { getBranding } from '../helpers/branding';
-import type { APIStatusTombstone, APITwitterStatus } from '../realms/api/schemas';
+import type { APIStatusTombstone, APITwitterStatus } from '@fxembed/atmosphere/types/api-schemas';
 import type { APIStatus, SocialThread } from '../types/apiStatus';
 import { shouldTranscodeGif } from '../helpers/giftranscode';
 import { normalizeLanguage } from '../helpers/language';
@@ -111,15 +109,9 @@ export const handleStatus = async (
   const isTelegram = (userAgent || '').indexOf('TelegramBot') > -1;
   const isDiscord = (userAgent || '').indexOf('Discordbot') > -1;
 
-  let fetchWithThreads = false;
-
-  if (
-    c.req.header('user-agent')?.includes('TelegramBot') &&
-    !flags?.direct &&
-    flags.instantViewUnrollThreads
-  ) {
-    fetchWithThreads = true;
-  }
+  /* Thread unrolling only ever existed to fill Telegram's Instant View reader page, which this
+     deployment no longer renders. A single status is all any embed needs. */
+  const fetchWithThreads = false;
 
   let thread: SocialThread;
   let useLanguage = language;
@@ -137,7 +129,6 @@ export const handleStatus = async (
     ) &&
     !flags.direct &&
     !flags.gallery &&
-    !flags.api &&
     !flags.noActivity
   ) {
     useActivity = true;
@@ -150,8 +141,9 @@ export const handleStatus = async (
       statusId,
       fetchWithThreads,
       twitterBuildHostFromContext(c),
-      useActivity ? undefined : useLanguage,
-      flags?.api ?? false
+      useActivity ? undefined : useLanguage
+      /* `legacyAPI` is left at its default: it shaped the response for the v1 JSON API, which this
+         deployment no longer serves. */
     );
   } else if (provider === DataProvider.Bluesky) {
     blueskyActivityPdsOut = useActivity ? {} : undefined;
@@ -220,16 +212,6 @@ export const handleStatus = async (
       break;
   }
 
-  /* Catch this request if it's an API response */
-  if (flags?.api) {
-    c.status(api.code as ContentfulStatusCode);
-    // Add every header from Constants.API_RESPONSE_HEADERS
-    for (const [header, value] of Object.entries(Constants.API_RESPONSE_HEADERS)) {
-      c.header(header, value);
-    }
-    return c.json(api);
-  }
-
   if (status === null) {
     if (provider === DataProvider.Bluesky) {
       return returnError(
@@ -275,45 +257,12 @@ export const handleStatus = async (
       console.log(api);
       return returnError(c, Strings.ERROR_API_FAIL);
   }
-  /* Should sensitive statuses be allowed Instant View? */
-  let useIV = false;
-
   if (
     (status.media?.all?.length ?? 0) <= 0 &&
     (status.media?.external?.url || status.media?.broadcast?.stream?.url)
   ) {
     useActivity = false;
   }
-
-  if (isTelegram && !flags?.direct && !flags?.gallery && !flags?.api) {
-    if (status.provider === 'twitter') {
-      const twitterStatus = status as APITwitterStatus;
-      useIV =
-        useIV ||
-        !!(
-          twitterStatus.is_note_tweet ||
-          twitterStatus.translation ||
-          twitterStatus.community_note
-        );
-    }
-    useIV =
-      useIV ||
-      !!(
-        status.media?.photos?.[0] || // Force instant view for photos for now https://bugs.telegram.org/c/33679
-        status.media?.mosaic ||
-        (status.quote && !isTombstone(status.quote)) ||
-        flags?.forceInstantView ||
-        (status as APITwitterStatus)?.article ||
-        (thread?.thread?.length ?? 0) > 1
-      );
-  }
-
-  /* Force enable IV for archivers */
-  if (flags?.archive) {
-    useIV = true;
-  }
-
-  let ivbody = '';
 
   let overrideMedia: APIMedia | undefined;
 
@@ -362,15 +311,6 @@ export const handleStatus = async (
               ? getVideoTranscodeDomain(status.id)
               : getVideoTranscodeDomainBluesky(status.author.id);
           redirectUrl = `https://${domain}${new URL(redirectUrl).pathname}`;
-        } else if (
-          experimentCheck(
-            Experiment.VIDEO_REDIRECT_WORKAROUND,
-            Constants.API_HOST_LIST.length > 0
-          ) &&
-          status.provider !== DataProvider.TikTok &&
-          status.provider !== DataProvider.Instagram
-        ) {
-          redirectUrl = `https://${Constants.API_HOST_LIST[0]}/2/go?url=${encodeURIComponent(redirectUrl)}`;
         }
       }
       // Only append name if it's an image
@@ -394,12 +334,6 @@ export const handleStatus = async (
   const engagementText = authorText.replace(/ {4}/g, ' ');
   const originalSiteName = getBranding(c).name;
   let siteName = originalSiteName;
-
-  if ((status as APITwitterStatus).article && isTelegram && useIV) {
-    siteName = i18next.t('articleIndicator', { brandingName: siteName });
-  } else if (thread.thread && thread.thread.length > 1 && isTelegram && useIV) {
-    siteName = i18next.t('threadIndicator', { brandingName: siteName });
-  }
 
   if (
     status.provider === DataProvider.Twitter &&
@@ -485,28 +419,6 @@ export const handleStatus = async (
     const safeRefreshTarget = refreshTarget ? safeMetaUrl(refreshTarget) : null;
     if (safeRefreshTarget) {
       headers.push({ httpEquiv: 'refresh', content: `0;url=${safeRefreshTarget}` });
-    }
-  }
-
-  if (useIV) {
-    try {
-      const instructions = renderInstantView({
-        context: c,
-        status: status as APIStatus,
-        thread: thread,
-        text: newText,
-        flags: flags,
-        targetLanguage: language ?? status.lang ?? 'en',
-        userAgent: userAgent
-      });
-      headers.push(...instructions.addHeaders);
-      if (instructions.authorText) {
-        authorText = instructions.authorText;
-      }
-      ivbody = instructions.text || '';
-    } catch (e) {
-      console.log('Error rendering Instant View', e, (e as Error)?.stack);
-      useIV = false;
     }
   }
 
@@ -750,22 +662,16 @@ export const handleStatus = async (
           { property: 'og:image:height', content: String(coverImage.original_img_height) }
         );
       }
-      if (!useIV) {
-        headers.push({ property: 'twitter:image', content: '0' });
-      }
+      headers.push({ property: 'twitter:image', content: '0' });
       // Update embed card type to show large image
       status.embed_card = 'summary_large_image';
     } else {
       /* Use a slightly higher resolution image for profile pics */
       const safeAvatar = safeMetaUrl(avatar);
-      if (!useIV) {
-        if (safeAvatar) {
-          headers.push({ property: 'og:image', content: safeAvatar });
-        }
-        headers.push({ property: 'twitter:image', content: '0' });
-      } else if (safeAvatar) {
-        headers.push({ property: 'twitter:image', content: safeAvatar });
+      if (safeAvatar) {
+        headers.push({ property: 'og:image', content: safeAvatar });
       }
+      headers.push({ property: 'twitter:image', content: '0' });
     }
   }
 
@@ -774,19 +680,10 @@ export const handleStatus = async (
     headers.push({ link: { rel: 'apple-touch-icon', href: safeAvatarIcon } });
   }
 
-  /* For supporting Telegram IV, we have to replace newlines with <br> within the og:description <meta> tag because of its weird (undocumented?) behavior.
-     If you don't use IV, it uses newlines just fine. Just like Discord and others. But with IV, suddenly newlines don't actually break the line anymore.
-
-     This is incredibly stupid, and you'd think this weird behavior would not be the case. You'd also think embedding a <br> inside the quotes inside
-     a meta tag shouldn't work, because that's stupid, but alas it does.
-     
-     A possible explanation for this weird behavior is due to the Medium template we are forced to use because Telegram IV is not an open platform
-     and we have to pretend to be Medium in order to get working IV, but haven't figured if the template is causing issues.  */
-  /* raw() #2: Telegram IV only honours line breaks in og:description when the attribute contains
-     literal <br> markup, so the text is escaped FIRST and the <br> spliced into the already-escaped
-     result. Nothing user-controlled survives unescaped, and escapeAttr never emits a newline, so
-     the replace cannot touch anything it introduced. */
-  let text: string | Html = useIV ? raw(escapeAttr(newText).replace(/\n/g, '<br>')) : newText;
+  /* Plain text: `serializeMeta` escapes it on the way into og:description, and every client we
+     serve honours real newlines there. (The <br>-splicing this used to do existed only for
+     Telegram Instant View, which mangled newlines inside its Medium-shaped reader template.) */
+  let text: string | Html = newText;
 
   // For article-only tweets, use article title and preview text
   let ogTitle: string | Html = `${status.author.name} (@${status.author.screen_name})`;
@@ -1000,7 +897,7 @@ export const handleStatus = async (
       runtime: formatRuntime(),
       lang: `lang="${escapeAttr(lang)}"`,
       headers: serializeMeta(headers).toString(),
-      body: ivbody
+      body: ''
     }).replace(/>(\s+)</gm, '><')
   );
 };

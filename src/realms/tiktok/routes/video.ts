@@ -2,7 +2,6 @@ import { Context } from 'hono';
 import { handleStatus } from '../../../embed/status';
 import { DataProvider } from '../../../enum';
 import { Constants } from '../../../constants';
-import { Experiment, experimentCheck } from '../../../experiments';
 import { Strings } from '../../../strings';
 import { InputFlags } from '../../../types/types';
 import { resolveShortUrl, isShortCode } from '@fxembed/atmosphere/providers/tiktok/conversation';
@@ -47,12 +46,6 @@ export const tiktokVideoRequest = async (c: Context) => {
   } else if (Constants.DIRECT_MEDIA_DOMAINS.includes(url.hostname)) {
     console.log('Direct media request by domain');
     flags.direct = true;
-  } else if (Constants.INSTANT_VIEW_DOMAINS.includes(url.hostname)) {
-    console.log('Forced instant view request');
-    flags.forceInstantView = true;
-  } else if (experimentCheck(Experiment.IV_FORCE_THREAD_UNROLL, userAgent.includes('Telegram'))) {
-    console.log('Forced unroll instant view');
-    flags.instantViewUnrollThreads = true;
   } else if (Constants.GALLERY_DOMAINS.includes(url.hostname)) {
     console.log('Gallery embed request');
     flags.gallery = true;
@@ -61,7 +54,7 @@ export const tiktokVideoRequest = async (c: Context) => {
     flags.noActivity = true;
   }
 
-  if (isBotUA || flags.direct || flags.api) {
+  if (isBotUA || flags.direct) {
     if (isBotUA) {
       console.log(`Matched bot UA ${userAgent}`);
     } else {
@@ -84,7 +77,7 @@ export const tiktokVideoRequest = async (c: Context) => {
 
         Since we obviously have no media to give the user, we'll just redirect to the status.
         Embeds will return as usual to bots as if direct media was never specified. */
-      if (!isBotUA && !flags.api && !flags.direct) {
+      if (!isBotUA && !flags.direct) {
         const url = `${Constants.TIKTOK_ROOT}/@demo/video/${id}`;
         return c.redirect(url, 302);
       }

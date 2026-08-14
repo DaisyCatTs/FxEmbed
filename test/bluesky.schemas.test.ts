@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { APIBlueskyStatusSchema } from '../src/realms/api/schemas';
+import { APIBlueskyStatusSchema } from '@fxembed/atmosphere/types/api-schemas';
 
 test('APIBlueskyStatusSchema parses minimal bluesky-shaped payload', () => {
   const sample = {

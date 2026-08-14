@@ -49,11 +49,12 @@ setTwitterProviderEnv({
   mosaicDomainList: Constants.MOSAIC_DOMAIN_LIST,
   mosaicBskyDomainList: Constants.MOSAIC_BSKY_DOMAIN_LIST,
   polyglotDomainList: Constants.POLYGLOT_DOMAIN_LIST,
-  apiHostList: Constants.API_HOST_LIST,
   videoBase: Constants.TWITTER_VIDEO_BASE,
   gifTranscodeDomainList: Constants.GIF_TRANSCODE_DOMAIN_LIST,
-  oldEmbedDomains: Constants.OLD_EMBED_DOMAINS,
-  blueskyApiHostList: Constants.BLUESKY_API_HOST_LIST
+  oldEmbedDomains: Constants.OLD_EMBED_DOMAINS
+  /* `apiHostList`/`blueskyApiHostList` are left at their empty defaults: they only ever tuned
+     upstream endpoint weighting for requests arriving on a JSON API hostname, and this deployment
+     no longer serves the JSON API. */
 });
 
 setTwitterProxyRuntime({
@@ -62,12 +63,9 @@ setTwitterProxyRuntime({
   hasDecryptedCredentials: proxyCreds.hasDecryptedCredentials,
   getRandomTwitterAccount: proxyCreds.getRandomTwitterAccount
 });
-import { api } from './realms/api/router';
 import { twitter } from './realms/twitter/router';
 import { cacheMiddleware } from './caches';
 import { bluesky } from './realms/bluesky/router';
-import { blueskyApi } from './realms/bluesky-api/router';
-import { atmosphere } from './realms/atmosphere/router';
 import { getBranding } from './helpers/branding';
 import { tiktok } from './realms/tiktok/router';
 import { instagram } from './realms/instagram/router';
@@ -117,20 +115,7 @@ export const app = new Hono<{
       return '/error';
     }
 
-    /* Operators who route a dedicated hostname to the JSON APIs keep that behaviour. These lists
-       are empty by default, in which case the APIs are reached by path prefix like everything
-       else. Matched on the full hostname, not a suffix. */
-    if (Constants.API_HOST_LIST.includes(url.hostname)) {
-      return `/api${url.pathname}`;
-    }
-    if (Constants.BLUESKY_API_HOST_LIST.includes(url.hostname)) {
-      return `/blueskyapi${url.pathname}`;
-    }
-    if (Constants.ATMOSPHERE_API_HOST_LIST.includes(url.hostname)) {
-      return `/atmosphere${url.pathname}`;
-    }
-
-    /* Otherwise the URL shape decides. See src/routing/identify.ts for why hostname-based realms
+    /* The URL shape decides the realm. See src/routing/identify.ts for why hostname-based realms
        cannot work on a single-domain deployment. */
     const { realm, path } = identifyRealm(url);
     console.log(`${realm} realm: /${realm}${path}`);
@@ -237,9 +222,6 @@ app.use('*', async (c, next) => {
 app.use('*', cacheMiddleware());
 app.use('*', timing({ enabled: false }));
 
-app.route(`/api`, api);
-app.route(`/blueskyapi`, blueskyApi);
-app.route(`/atmosphere`, atmosphere);
 app.route(`/twitter`, twitter);
 app.route(`/bluesky`, bluesky);
 app.route(`/tiktok`, tiktok);

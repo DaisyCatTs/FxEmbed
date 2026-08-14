@@ -47,8 +47,12 @@ export type RequestLogFields = {
  * masked too, because signed media tokens ride in the path.
  */
 export const redactUrl = (input: string | URL): string => {
-  const url = typeof input === 'string' ? URL.parse(input) : input;
-  if (!url) {
+  let url: URL;
+  try {
+    /* `new URL` rather than `URL.parse`: the Workers runtime has both, but only the throwing
+       constructor is in the type definitions we build against. */
+    url = typeof input === 'string' ? new URL(input) : input;
+  } catch {
     return '[unparseable]';
   }
 

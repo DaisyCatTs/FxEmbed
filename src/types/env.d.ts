@@ -7,7 +7,6 @@ declare namespace NodeJS {
     STANDARD_INSTAGRAM_DOMAIN_LIST?: string;
     DIRECT_MEDIA_DOMAINS?: string;
     TEXT_ONLY_DOMAINS?: string;
-    INSTANT_VIEW_DOMAINS?: string;
     GALLERY_DOMAINS?: string;
     FORCE_MOSAIC_DOMAINS?: string;
     OLD_EMBED_DOMAINS?: string;
@@ -15,9 +14,6 @@ declare namespace NodeJS {
     MOSAIC_BSKY_DOMAIN_LIST?: string;
     POLYGLOT_DOMAIN_LIST?: string;
     POLYGLOT_ACCESS_TOKEN?: string;
-    API_HOST_LIST?: string;
-    BLUESKY_API_HOST_LIST?: string;
-    ATMOSPHERE_API_HOST_LIST?: string;
     GIF_TRANSCODE_DOMAIN_LIST?: string;
     VIDEO_TRANSCODE_DOMAIN_LIST?: string;
     VIDEO_TRANSCODE_BSKY_DOMAIN_LIST?: string;

@@ -72,9 +72,6 @@ describe('explicit prefixes', () => {
       'mastodon',
       '/mastodon.social/109327927044751780'
     ],
-    ['/_/api/2/status/20', 'api', '/2/status/20'],
-    ['/_/blueskyapi/2/status/a/b', 'blueskyapi', '/2/status/a/b'],
-    ['/_/atmosphere/2/openapi.json', 'atmosphere', '/2/openapi.json'],
     ['/_/m/sometoken/video.mp4', 'media', '/sometoken/video.mp4'],
     ['/_/m/sometoken', 'media', '/sometoken']
   ];

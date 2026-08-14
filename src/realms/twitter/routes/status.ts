@@ -55,14 +55,6 @@ export const statusRequest = async (c: Context) => {
   } else if (Constants.TEXT_ONLY_DOMAINS.includes(url.hostname)) {
     console.log('Text-only embed request');
     flags.textOnly = true;
-  } else if (Constants.INSTANT_VIEW_DOMAINS.includes(url.hostname)) {
-    console.log('Forced instant view request');
-    flags.forceInstantView = true;
-  } else if (
-    experimentCheck(Experiment.IV_FORCE_THREAD_UNROLL, userAgent.includes('TelegramBot'))
-  ) {
-    console.log('Forced unroll instant view');
-    flags.instantViewUnrollThreads = true;
   } else if (Constants.GALLERY_DOMAINS.includes(url.hostname)) {
     console.log('Gallery embed request');
     flags.gallery = true;
@@ -102,11 +94,6 @@ export const statusRequest = async (c: Context) => {
 
   const baseUrl = getBaseRedirectUrl(c);
 
-  if (Constants.API_HOST_LIST.includes(url.hostname)) {
-    console.log('JSON API request');
-    flags.api = true;
-  }
-
   if (isHorizonEmbedParam(url)) {
     flags.horizon = true;
   }
@@ -114,8 +101,8 @@ export const statusRequest = async (c: Context) => {
   const statusIdForRedirect = numericStatusId ?? id;
   const horizonTwitterStatusUrl = `${Constants.HORIZON_WEB_ROOT}/${handle || 'i'}/status/${statusIdForRedirect}`;
 
-  /* Direct media or API access bypasses bot check, returning same response regardless of UA */
-  if (isBotUA || flags.direct || flags.api) {
+  /* Direct media access bypasses bot check, returning same response regardless of UA */
+  if (isBotUA || flags.direct) {
     if (isBotUA) {
       console.log(`Matched bot UA ${userAgent}`);
     } else {
@@ -151,7 +138,7 @@ export const statusRequest = async (c: Context) => {
 
          Since we obviously have no media to give the user, we'll just redirect to the status.
          Embeds will return as usual to bots as if direct media was never specified. */
-      if (!isBotUA && !flags.api && !flags.direct) {
+      if (!isBotUA && !flags.direct) {
         const baseUrl = getBaseRedirectUrl(c);
 
         if (flags.horizon) {

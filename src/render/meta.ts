@@ -20,13 +20,12 @@ export interface MetaLink {
 /**
  * A tag to emit into `<head>`.
  *
- * `content` accepts {@link Html} for the one case that legitimately needs markup inside the
- * attribute (Telegram Instant View needs literal `<br>` inside `og:description`); anything typed
- * `string` is escaped.
+ * `content` accepts {@link Html} for a value that is markup by construction rather than upstream
+ * data; anything typed `string` is escaped.
  *
  * `httpEquiv` and `rawHtml` are extra variants beyond property/name/link: the former carries the
- * browser-fallback `<meta http-equiv="refresh">`, the latter the `<style>` block Instant View adds
- * for archivers. Both still pass through this serialiser, so the choke point holds.
+ * browser-fallback `<meta http-equiv="refresh">`, the latter a literal element such as a `<style>`
+ * block. Both still pass through this serialiser, so the choke point holds.
  */
 export type MetaTag =
   | { property: string; content: string | Html }

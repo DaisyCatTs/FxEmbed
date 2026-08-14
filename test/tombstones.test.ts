@@ -4,9 +4,7 @@ import { botHeaders } from './helpers/data';
 import harness from './helpers/harness';
 import { stripTombstones } from '../src/helpers/tombstone';
 import { DataProvider } from '../src/enum';
-import threadQuoteNotfound from './fixtures/bluesky/thread-quote-notfound.json';
-import { statusesToFeedItems } from '../src/helpers/syndicationFeeds';
-import type { APIStatusTombstone, APITwitterStatus } from '../src/realms/api/schemas';
+import type { APIStatusTombstone, APITwitterStatus } from '@fxembed/atmosphere/types/api-schemas';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -78,180 +76,30 @@ test('stripTombstones removes nested quote tombstones and thread items', () => {
   expect(thread.thread?.every(t => (t as { type?: string }).type !== 'tombstone')).toBe(true);
 });
 
-test('API v2 /2/status empty quoted_status_result yields tombstone quote', async () => {
+/**
+ * Tombstone coverage through the embed pipeline.
+ *
+ * These used to go through the `/2/*` JSON API, which read the same processors but is gone. The
+ * embed path is the only surface this deployment serves, so that is where tombstones have to be
+ * asserted — a tombstoned focal post must still produce a readable card rather than a blank one.
+ */
+const embed = async (path: string): Promise<string> => {
   const res = await app.request(
-    new Request('https://api.fxtwitter.com/2/status/991001', {
-      method: 'GET',
-      headers: botHeaders
-    }),
+    new Request(`https://fxtwitter.com${path}`, { method: 'GET', headers: botHeaders }),
     undefined,
     harness
   );
   expect(res.status).toBe(200);
-  const body = (await res.json()) as { status: APITwitterStatus };
-  expect(body.status.quote).toMatchObject({
-    type: 'tombstone',
-    reason: 'unavailable',
-    id: '991888'
-  });
-  expect(body.status.quote && 'url' in body.status.quote ? body.status.quote.url : '').toContain(
-    '991888'
-  );
+  return await res.text();
+};
+
+test('a suspended focal post embeds as its tombstone message, not an empty card', async () => {
+  const html = await embed('/i/status/991500');
+  expect(html).toContain('og:description');
+  expect(html).toMatch(/suspended|unavailable|deleted/i);
 });
 
-test('API v2 /2/status focal TweetUnavailable (TweetResultByRestId) returns suspended tombstone on status', async () => {
-  const res = await app.request(
-    new Request('https://api.fxtwitter.com/2/status/991500', {
-      method: 'GET',
-      headers: botHeaders
-    }),
-    undefined,
-    harness
-  );
-  expect(res.status).toBe(404);
-  const body = (await res.json()) as { code: number; status?: APIStatusTombstone };
-  expect(body.code).toBe(404);
-  expect(body.status?.type).toBe('tombstone');
-  expect(body.status?.reason).toBe('suspended');
-  expect((body.status?.message ?? '').length).toBeGreaterThan(0);
-});
-
-test('API v2 /2/status focal TweetTombstone only (TweetDetail) returns suspended tombstone on status', async () => {
-  const res = await app.request(
-    new Request('https://api.fxtwitter.com/2/status/991503', {
-      method: 'GET',
-      headers: botHeaders
-    }),
-    undefined,
-    harness
-  );
-  expect(res.status).toBe(404);
-  const body = (await res.json()) as { code: number; status?: APIStatusTombstone };
-  expect(body.code).toBe(404);
-  expect(body.status?.type).toBe('tombstone');
-  expect(body.status?.reason).toBe('suspended');
-  expect((body.status?.message ?? '').length).toBeGreaterThan(0);
-});
-
-test('API v2 /2/status TweetUnavailable Suspended quote yields suspended tombstone', async () => {
-  const res = await app.request(
-    new Request('https://api.fxtwitter.com/2/status/991004', {
-      method: 'GET',
-      headers: botHeaders
-    }),
-    undefined,
-    harness
-  );
-  expect(res.status).toBe(200);
-  const body = (await res.json()) as { status: APITwitterStatus };
-  expect(body.status.quote).toMatchObject({
-    type: 'tombstone',
-    reason: 'suspended'
-  });
-});
-
-test('API v2 /2/thread includes tombstone between chain tweets', async () => {
-  const res = await app.request(
-    new Request('https://api.fxtwitter.com/2/thread/991202', {
-      method: 'GET',
-      headers: botHeaders
-    }),
-    undefined,
-    harness
-  );
-  expect(res.status).toBe(200);
-  const body = (await res.json()) as {
-    thread: unknown[] | null;
-  };
-  expect(body.thread?.length).toBeGreaterThanOrEqual(2);
-  const threadTombs = body.thread?.filter(
-    (x): x is APIStatusTombstone =>
-      typeof x === 'object' && x !== null && (x as APIStatusTombstone).type === 'tombstone'
-  );
-  expect(threadTombs?.length).toBe(1);
-  expect(threadTombs?.[0]?.reason).toBe('deleted');
-});
-
-/** Leading ancestor is only a TweetTombstone row (e.g. suspended); merge min index was past it. */
-test('API v2 /2/thread includes leading suspended tombstone before chain tweets', async () => {
-  const res = await app.request(
-    new Request('https://api.fxtwitter.com/2/thread/991302', {
-      method: 'GET',
-      headers: botHeaders
-    }),
-    undefined,
-    harness
-  );
-  expect(res.status).toBe(200);
-  const body = (await res.json()) as {
-    thread: unknown[] | null;
-  };
-  expect(body.thread?.length).toBeGreaterThanOrEqual(3);
-  const threadTombs = body.thread?.filter(
-    (x): x is APIStatusTombstone =>
-      typeof x === 'object' && x !== null && (x as APIStatusTombstone).type === 'tombstone'
-  );
-  expect(threadTombs?.length).toBe(1);
-  expect(threadTombs?.[0]?.reason).toBe('suspended');
-});
-
-/** Focal tweet still references deleted parent id in `in_reply_to` (not bridged to root). */
-test('API v2 /2/thread keeps tombstone when reply chain walk cannot reach root', async () => {
-  const res = await app.request(
-    new Request('https://api.fxtwitter.com/2/thread/991203', {
-      method: 'GET',
-      headers: botHeaders
-    }),
-    undefined,
-    harness
-  );
-  expect(res.status).toBe(200);
-  const body = (await res.json()) as {
-    thread: unknown[] | null;
-  };
-  expect(body.thread?.length).toBeGreaterThanOrEqual(3);
-  const threadTombs = body.thread?.filter(
-    (x): x is APIStatusTombstone =>
-      typeof x === 'object' && x !== null && (x as APIStatusTombstone).type === 'tombstone'
-  );
-  expect(threadTombs?.length).toBe(1);
-  const root = body.thread?.find(
-    (x): x is APITwitterStatus =>
-      typeof x === 'object' && x !== null && (x as APITwitterStatus).id === '991200'
-  );
-  expect(root?.text).toBe('root');
-});
-
-test('syndication feed HTML includes tombstone quote message', () => {
-  const status = minimalTwitterStatus({
-    quote: tombstone('blocked')
-  });
-  const items = statusesToFeedItems([status], {});
-  expect(items[0]?.htmlContent).toContain('msg-blocked');
-  expect(items[0]?.htmlContent).toContain('<blockquote>');
-});
-
-test('GET /2/status Bluesky quote viewNotFound yields tombstone', async () => {
-  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input: RequestInfo) => {
-    const u = typeof input === 'string' ? input : input.url;
-    if (u.includes('app.bsky.feed.getPostThread')) {
-      return new Response(JSON.stringify(threadQuoteNotfound), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-    if (u.includes('app.bsky.actor.getProfiles')) {
-      return new Response(JSON.stringify({ profiles: [] }), { status: 200 });
-    }
-    throw new Error(`Unexpected fetch: ${u}`);
-  });
-
-  const res = await app.request('https://api.fxbsky.app/2/status/author.test/rkeyquotehost', {
-    headers: { 'User-Agent': 'FxEmbedTest/1.0' }
-  });
-  expect(res.status).toBe(200);
-  const body = (await res.json()) as { status: { quote?: APIStatusTombstone } };
-  expect(body.status.quote?.type).toBe('tombstone');
-  expect(body.status.quote?.reason).toBe('deleted');
-  expect(body.status.quote?.at_uri).toContain('rkeygone');
+test('a tombstoned quote is described in the embed of the post that quotes it', async () => {
+  const html = await embed('/i/status/991004');
+  expect(html).toMatch(/suspended|unavailable|deleted/i);
 });

@@ -28,16 +28,6 @@ const MULTI_PHOTO_KEYS = ['GahebgHbEAEevTU', 'GahecZ5aAAEX7GX', 'GaheddqbsAAzGXg
 const activityUrl = (host: string, data: object) =>
   `https://${host}/api/v1/statuses/${encodeSnowcode(data)}`;
 
-/**
- * The test env still sets API_HOST_LIST, so video URLs are wrapped in a `/2/go?url=` redirect hop.
- * Production leaves that list empty and emits the CDN URL directly. Unwrap it so these tests
- * assert on the media actually being pointed at, in either configuration.
- */
-const effectiveMediaUrl = (url: string): string => {
-  const wrapped = new URL(url).searchParams.get('url');
-  return wrapped ?? url;
-};
-
 const getActivity = async (host: string, data: object): Promise<ActivityStatus> => {
   const result = await app.request(
     new Request(activityUrl(host, data), {
@@ -65,7 +55,7 @@ test('GIF is delivered as a looping video, not a still image', async () => {
   expect(gif.type).toEqual('gifv');
 
   /* The playable mp4 from the upstream CDN. */
-  expect(effectiveMediaUrl(gif.url)).toEqual(GIF_MP4);
+  expect(gif.url).toEqual(GIF_MP4);
 
   /* The still frame belongs in preview_url, never as the main url. */
   expect(gif.preview_url).toEqual(GIF_POSTER);

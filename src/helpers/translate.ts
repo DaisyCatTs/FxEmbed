@@ -1,6 +1,6 @@
 import { Context } from 'hono';
 import { allowHosts, guardedFetch } from '@fxembed/atmosphere/net';
-import type { APIMastodonStatus, APITwitterStatus } from '../realms/api/schemas';
+import type { APIMastodonStatus, APITwitterStatus } from '@fxembed/atmosphere/types/api-schemas';
 import { Constants } from '../constants';
 import { normalizeLanguage } from './language';
 

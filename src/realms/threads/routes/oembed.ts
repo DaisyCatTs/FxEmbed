@@ -1,7 +1,5 @@
 import { Context } from 'hono';
-import { Strings } from '../../../strings';
-import { getBranding } from '../../../helpers/branding';
-import { OEmbed } from '../../../types/types';
+import { oembedResponse } from '../../../render/oembed';
 import { THREADS_WEB_ROOT } from '../../../providers/threads/web';
 
 export const oembed = async (c: Context) => {
@@ -12,19 +10,12 @@ export const oembed = async (c: Context) => {
   const status = searchParams.get('status') ?? '';
 
   const statusUrl = `${THREADS_WEB_ROOT}/t/${encodeURIComponent(status)}`;
-  const branding = getBranding(c);
 
-  const data: OEmbed = {
-    author_name: text,
-    author_url: author
+  return oembedResponse(c, {
+    text,
+    authorUrl: author
       ? `${THREADS_WEB_ROOT}/@${encodeURIComponent(author.replace(/^@/, ''))}/`
       : statusUrl,
-    provider_name: branding.name,
-    provider_url: searchParams.get('provider') ? statusUrl : branding.redirect,
-    title: Strings.DEFAULT_AUTHOR_TEXT,
-    type: 'rich',
-    version: '1.0'
-  };
-
-  return c.json(data, 200);
+    providerUrl: statusUrl
+  });
 };

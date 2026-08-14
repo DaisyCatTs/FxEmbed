@@ -231,16 +231,6 @@ test('requests that skip the read also skip the write', async () => {
      nothing could ever hit, and stored per-visitor `base_redirect` responses under the plain key. */
   const cases: { name: string; url: string; init: RequestInit }[] = [
     {
-      name: 'API realm host',
-      url: 'https://api.fxtwitter.com/user/status/1',
-      init: { headers: botHeaders }
-    },
-    {
-      name: 'Bluesky API realm host',
-      url: 'https://api.fxbsky.app/user/status/1',
-      init: { headers: botHeaders }
-    },
-    {
       name: 'Discord activity endpoint',
       url: 'https://fxtwitter.com/api/v1/statuses/abc123',
       init: { headers: botHeaders }

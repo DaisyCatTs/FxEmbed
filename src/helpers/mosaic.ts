@@ -1,7 +1,7 @@
 import { Constants } from '../constants';
 import { DataProvider } from '../enum';
 import { handleMosaic as handleMosaicAtmosphere } from '@fxembed/atmosphere/helpers';
-import type { APIPhoto } from '../realms/api/schemas';
+import type { APIPhoto } from '@fxembed/atmosphere/types/api-schemas';
 
 const mosaicConfig = {
   twitterLikeDomains: Constants.MOSAIC_DOMAIN_LIST,

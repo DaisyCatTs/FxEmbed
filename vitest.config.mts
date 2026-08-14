@@ -40,8 +40,8 @@ export default defineConfig({
     cloudflareTest({
       remoteBindings: false,
       // Use Miniflare options only (not `wrangler.configPath`): loading the full Wrangler project
-      // changes isolate setup and can surface empty `process.env` for app code, breaking realm routing
-      // (e.g. api.fxbsky.app must match BLUESKY_API_HOST_LIST, not the embed bluesky realm).
+      // changes isolate setup and can surface empty `process.env` for app code, breaking realm
+      // routing (e.g. d.fxtwitter.com must match DIRECT_MEDIA_DOMAINS to serve direct media).
       miniflare: {
         compatibilityDate
       }

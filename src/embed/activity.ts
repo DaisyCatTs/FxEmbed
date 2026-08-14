@@ -12,7 +12,6 @@ import icu from 'i18next-icu';
 import { escapeRegex } from '../helpers/utils';
 import { decodeSnowcode } from '../helpers/snowcode';
 import translationResources from '../../i18n/resources';
-import { Experiment, experimentCheck } from '../experiments';
 import { Context } from 'hono';
 import { shouldTranscodeGif } from '../helpers/giftranscode';
 import { normalizeLanguage } from '../helpers/language';
@@ -67,28 +66,6 @@ const convertArticleMediaToAttachment = (
     }
     if (width < 400 || height < 400) {
       sizeMultiplier = 2;
-    }
-
-    if (experimentCheck(Experiment.VIDEO_REDIRECT_WORKAROUND, Constants.API_HOST_LIST.length > 0)) {
-      const redirectedUrl = `https://${Constants.API_HOST_LIST[0]}/2/go?url=${encodeURIComponent(videoUrl)}`;
-      return {
-        id: media.media_id,
-        type: 'video',
-        url: redirectedUrl,
-        preview_url: video.media_url_https,
-        remote_url: null,
-        preview_remote_url: null,
-        text_url: null,
-        description: video.ext_alt_text ?? undefined,
-        meta: {
-          original: {
-            width: width * sizeMultiplier,
-            height: height * sizeMultiplier,
-            size: `${width * sizeMultiplier}x${height * sizeMultiplier}`,
-            aspect: width / height
-          }
-        }
-      } as ActivityMediaAttachment;
     }
 
     return {
@@ -800,17 +777,6 @@ export const handleActivity = async (
               }
               if (video.width < 400 || video.height < 400) {
                 sizeMultiplier = 2;
-              }
-              // Apply video redirect workaround, but NOT for TikTok/Instagram (CDN URLs work directly)
-              if (
-                experimentCheck(
-                  Experiment.VIDEO_REDIRECT_WORKAROUND,
-                  Constants.API_HOST_LIST.length > 0
-                ) &&
-                thread.status?.provider !== DataProvider.TikTok &&
-                thread.status?.provider !== DataProvider.Instagram
-              ) {
-                video.url = `https://${Constants.API_HOST_LIST[0]}/2/go?url=${encodeURIComponent(video.url)}`;
               }
               return {
                 id: attachmentId,

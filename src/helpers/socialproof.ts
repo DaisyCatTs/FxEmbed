@@ -5,7 +5,7 @@ import {
   getSocialTextIV as getSocialTextIVCore
 } from '@fxembed/atmosphere/helpers';
 import type { APIStatus } from '../types/apiStatus';
-import type { APITwitterStatus } from '../realms/api/schemas';
+import type { APITwitterStatus } from '@fxembed/atmosphere/types/api-schemas';
 
 export const getSocialProof = (status: APIStatus): string | null => getSocialProofCore(status);
 

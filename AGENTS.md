@@ -1,6 +1,8 @@
 # AGENTS.md
 
-This is the repository for FxEmbed, the home of FxTwitter, FixupX, and FxBluesky. FxEmbed generates rich embeds for social media posts (X/Twitter, Bluesky, TikTok) for chat platforms like Discord and Telegram. There is a public API provided for X/Twitter, Bluesky and such, the modern v2 API generates an OpenAPI spec. Typically deployed using Cloudflare Workers, this TypeScript app uses Hono for routing, i18next localization, zod API validation.
+This is a single-domain fork of FxEmbed (the home of FxTwitter, FixupX, and FxBluesky), serving `e.puppygirl.city`. It generates rich embeds for social media posts (X/Twitter, Bluesky, TikTok, Instagram, Mastodon, Threads) for Discord. Deployed on Cloudflare Workers; TypeScript, Hono for routing, i18next localization.
+
+> **Removed from this fork:** the `/2/*` JSON API and its OpenAPI spec, Telegram Instant View, and the RSS/Atom feeds. Upstream documentation describing those still applies to FxEmbed proper, not here. `packages/atmosphere` keeps its relay/OpenAPI types for self-hosters.
 
 ## @fxembed/atmosphere (monorepo package)
 
@@ -43,8 +45,7 @@ Environment variables are generally set in .env, not in Wrangler, except for cer
 ### Docs site (`docs/`)
 
 - Guide screenshots are static assets under `docs/public/guide/readme/` (served as `/guide/readme/*` in the docs site).
-- Refresh API reference specs from **production**: `cd docs && npm run extract-openapi`
-- Refresh from your **local worker** (after `wrangler dev --local`): `cd docs && npm run extract-openapi:local` (default port `8787`; custom: `npm run extract-openapi:local -- 9000`). The script sets `Host` to `api.fxtwitter.com` / `api.fxbsky.app` so routing matches production.
+- API reference specs: the `extract-openapi` scripts pull from upstream FxEmbed hosts only. This worker serves no OpenAPI spec, so `extract-openapi:local` no longer has anything to read.
 - Then `npm run dev` in `docs/` to preview.
 
 ### Dev server testing notes

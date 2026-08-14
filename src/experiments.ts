@@ -1,8 +1,6 @@
 export enum Experiment {
   TWEET_DETAIL_API = 'TWEET_DETAIL_API',
   TRANSCODE_GIFS = 'TRANSCODE_GIFS',
-  IV_FORCE_THREAD_UNROLL = 'IV_FORCE_THREAD_UNROLL',
-  VIDEO_REDIRECT_WORKAROUND = 'VIDEO_REDIRECT_WORKAROUND',
   ACTIVITY_EMBED = 'ACTIVITY_EMBED',
   BROADCAST_STREAM_API = 'BROADCAST_STREAM_API',
   KITCHENSINK_VIDEO = 'KITCHENSINK_VIDEO',
@@ -26,16 +24,6 @@ const Experiments: { [key in Experiment]: ExperimentConfig } = {
   [Experiment.TRANSCODE_GIFS]: {
     name: 'Transcode GIFs',
     description: 'Transcode GIFs for Discord, etc.',
-    percentage: 1
-  },
-  [Experiment.IV_FORCE_THREAD_UNROLL]: {
-    name: 'IV force thread unroll',
-    description: 'Force thread unroll for Telegram Instant View',
-    percentage: 1
-  },
-  [Experiment.VIDEO_REDIRECT_WORKAROUND]: {
-    name: 'Video redirect workaround',
-    description: 'Workaround for video playback issues on Telegram/Discord',
     percentage: 1
   },
   [Experiment.ACTIVITY_EMBED]: {

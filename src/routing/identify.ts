@@ -18,16 +18,7 @@ import { decodeSnowcode } from '../helpers/snowcode';
  */
 
 export type RealmName =
-  | 'twitter'
-  | 'bluesky'
-  | 'tiktok'
-  | 'instagram'
-  | 'mastodon'
-  | 'threads'
-  | 'api'
-  | 'blueskyapi'
-  | 'atmosphere'
-  | 'media';
+  'twitter' | 'bluesky' | 'tiktok' | 'instagram' | 'mastodon' | 'threads' | 'media';
 
 export type RealmMatch = {
   realm: RealmName;
@@ -90,9 +81,6 @@ const EXPLICIT_PREFIXES: ReadonlyArray<readonly [string, RealmName]> = [
   ['/_/mastodon', 'mastodon'],
   ['/_/masto', 'mastodon'],
   ['/_/threads', 'threads'],
-  ['/_/api', 'api'],
-  ['/_/blueskyapi', 'blueskyapi'],
-  ['/_/atmosphere', 'atmosphere'],
   /* Signed media. Not a provider realm — it belongs to no single one, and the provider it serves is
      named inside the token rather than by the path. It lives here because the reserved namespace is
      exactly the place for a route that must never collide with a handle. */
