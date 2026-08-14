@@ -1,0 +1,15 @@
+{
+  "data": {
+    "user": {
+      "result": {
+        "__typename": "User",
+        "id": "VXNlcjoyMDAwMDAwMDAx",
+        "rest_id": "2000000001",
+        "legacy": {
+          "name": "Barest",
+          "screen_name": "barestprofile"
+        }
+      }
+    }
+  }
+}

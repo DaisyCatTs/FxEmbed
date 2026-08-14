@@ -1,0 +1,49 @@
+{
+  "data": {
+    "user_results": {
+      "rest_id": "1999999999",
+      "result": {
+        "__typename": "User",
+        "rest_id": "1999999999",
+        "action_counts": {
+          "favorites_count": 12
+        },
+        "avatar": {
+          "image_url": "https://pbs.twimg.com/profile_images/1999999999/evil_normal.jpg"
+        },
+        "banner": {
+          "image_url": "https://pbs.twimg.com/profile_banners/1999999999/1690175171"
+        },
+        "core": {
+          "created_at": "Tue Feb 20 14:35:54 +0000 2007",
+          "name": "\"><script>alert(1)</script>",
+          "screen_name": "evilprofile"
+        },
+        "location": {
+          "location": "\"><script>alert(3)</script>"
+        },
+        "privacy": {
+          "protected": false
+        },
+        "profile_bio": {
+          "description": "\" onerror=alert(1) x=\"<script>alert(2)</script>",
+          "entities": {
+            "description": {}
+          },
+          "withheld_in_countries": []
+        },
+        "relationship_counts": {
+          "followers": 1337,
+          "following": 42
+        },
+        "tweet_counts": {
+          "media_tweets": 3,
+          "tweets": 100
+        },
+        "verification": {
+          "is_blue_verified": false
+        }
+      }
+    }
+  }
+}

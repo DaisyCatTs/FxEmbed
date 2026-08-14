@@ -1,0 +1,15 @@
+{
+  "data": {
+    "user_results": {
+      "rest_id": "2000000001",
+      "result": {
+        "__typename": "User",
+        "rest_id": "2000000001",
+        "core": {
+          "name": "Barest",
+          "screen_name": "barestprofile"
+        }
+      }
+    }
+  }
+}

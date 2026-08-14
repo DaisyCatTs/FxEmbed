@@ -1,0 +1,43 @@
+{
+  "data": {
+    "user_results": {
+      "rest_id": "2000000000",
+      "result": {
+        "__typename": "User",
+        "rest_id": "2000000000",
+        "action_counts": {
+          "favorites_count": 0
+        },
+        "avatar": {
+          "image_url": "https://pbs.twimg.com/profile_images/2000000000/plain_normal.jpg"
+        },
+        "core": {
+          "created_at": "Tue Feb 20 14:35:54 +0000 2007",
+          "name": "No Bio Here",
+          "screen_name": "nobioprofile"
+        },
+        "privacy": {
+          "protected": false
+        },
+        "profile_bio": {
+          "description": "",
+          "entities": {
+            "description": {}
+          },
+          "withheld_in_countries": []
+        },
+        "relationship_counts": {
+          "followers": 7,
+          "following": 0
+        },
+        "tweet_counts": {
+          "media_tweets": 0,
+          "tweets": 0
+        },
+        "verification": {
+          "is_blue_verified": false
+        }
+      }
+    }
+  }
+}

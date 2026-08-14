@@ -1,0 +1,50 @@
+{
+  "data": {
+    "user_results": {
+      "rest_id": "2000000002",
+      "result": {
+        "__typename": "User",
+        "rest_id": "2000000002",
+        "action_counts": {
+          "favorites_count": 5
+        },
+        "avatar": {
+          "image_url": "https://pbs.twimg.com/profile_images/2000000002/card_normal.jpg"
+        },
+        "banner": {
+          "image_url": "https://pbs.twimg.com/profile_banners/2000000002/1690175171"
+        },
+        "core": {
+          "created_at": "Tue Feb 20 14:35:54 +0000 2007",
+          "name": "Card Profile",
+          "screen_name": "cardprofile"
+        },
+        "location": {
+          "location": "everywhere"
+        },
+        "privacy": {
+          "protected": false
+        },
+        "profile_bio": {
+          "description": "a bio with a & an <angle bracket>",
+          "entities": {
+            "description": {}
+          },
+          "withheld_in_countries": []
+        },
+        "relationship_counts": {
+          "followers": 1234567,
+          "following": 250
+        },
+        "tweet_counts": {
+          "media_tweets": 12,
+          "tweets": 4200
+        },
+        "verification": {
+          "is_blue_verified": true,
+          "verified_type": "Business"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "data": {
+    "user": {
+      "result": {
+        "__typename": "User",
+        "id": "VXNlcjoxOTk5OTk5OTk5",
+        "rest_id": "1999999999",
+        "is_blue_verified": false,
+        "legacy": {
+          "created_at": "Tue Feb 20 14:35:54 +0000 2007",
+          "description": "\" onerror=alert(1) x=\"<script>alert(2)</script>",
+          "entities": {
+            "description": {}
+          },
+          "favourites_count": 12,
+          "followers_count": 1337,
+          "friends_count": 42,
+          "location": "\"><script>alert(3)</script>",
+          "media_count": 3,
+          "name": "\"><script>alert(1)</script>",
+          "profile_banner_url": "https://pbs.twimg.com/profile_banners/1999999999/1690175171",
+          "profile_image_url_https": "https://pbs.twimg.com/profile_images/1999999999/evil_normal.jpg",
+          "protected": false,
+          "screen_name": "evilprofile",
+          "statuses_count": 100
+        }
+      }
+    }
+  }
+}

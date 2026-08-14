@@ -1,0 +1,28 @@
+{
+  "data": {
+    "user": {
+      "result": {
+        "__typename": "User",
+        "id": "VXNlcjoyMDAwMDAwMDAw",
+        "rest_id": "2000000000",
+        "is_blue_verified": false,
+        "legacy": {
+          "created_at": "Tue Feb 20 14:35:54 +0000 2007",
+          "description": "",
+          "entities": {
+            "description": {}
+          },
+          "favourites_count": 0,
+          "followers_count": 7,
+          "friends_count": 0,
+          "media_count": 0,
+          "name": "No Bio Here",
+          "profile_image_url_https": "https://pbs.twimg.com/profile_images/2000000000/plain_normal.jpg",
+          "protected": false,
+          "screen_name": "nobioprofile",
+          "statuses_count": 0
+        }
+      }
+    }
+  }
+}
