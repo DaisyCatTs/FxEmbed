@@ -128,6 +128,29 @@ describe('collisions resolve to the right provider', () => {
     expect(realmOf('/t/status/20')).toEqual('twitter');
   });
 
+  test('a bare TikTok share code is TikTok, not an X handle', () => {
+    /* vm.tiktok.com links carry no prefix — the code is the entire path — so shape is the only
+       discriminator. It is rewritten onto the router's existing /t/:id route. */
+    expect(realmOf('/ZN88mCDeg')).toEqual('tiktok');
+    expect(pathOf('/ZN88mCDeg')).toEqual('/t/ZN88mCDeg');
+    expect(realmOf('/ZP8yxgATu')).toEqual('tiktok');
+    expect(realmOf('/ZM6h1a2Bc3')).toEqual('tiktok');
+  });
+
+  test('ordinary X handles are not mistaken for TikTok share codes', () => {
+    /* The digit requirement is what saves handles like @ZachBraff; without it the Z-prefix and
+       mixed case alone would claim them. */
+    expect(realmOf('/ZachBraff')).toEqual('twitter');
+    expect(realmOf('/Zoe')).toEqual('twitter');
+    expect(realmOf('/zerocool')).toEqual('twitter');
+    expect(realmOf('/ZZZZZZZZ')).toEqual('twitter');
+    expect(realmOf('/jack')).toEqual('twitter');
+    expect(realmOf('/elonmusk')).toEqual('twitter');
+    /* All-lowercase or no leading Z, however code-like otherwise. */
+    expect(realmOf('/zn88mcdeg')).toEqual('twitter');
+    expect(realmOf('/AN88mCDeg')).toEqual('twitter');
+  });
+
   test('an @-prefixed handle is never an X handle', () => {
     /* X handles are [0-9A-Za-z_] and can never contain @, so the literal @ is a safe marker. */
     expect(realmOf('/@someuser/video/7234567890123456789')).toEqual('tiktok');

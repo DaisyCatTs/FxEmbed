@@ -101,6 +101,24 @@ const AT_HANDLE = /^@[\w.-]{1,30}$/;
 const NUMERIC_ID = /^\d{6,25}$/;
 const SHORTCODE = /^[A-Za-z0-9_-]{5,32}$/;
 
+/**
+ * A bare TikTok share code, as produced by `vm.tiktok.com/ZN88mCDeg`.
+ *
+ * These links carry no prefix — the code *is* the whole path — so the only thing separating one
+ * from an X handle is its shape. TikTok codes begin with `Z`, run 8-16 characters, and mix upper
+ * case, lower case and digits; the digit is what does most of the work, since it rules out
+ * ordinary handles like `@ZachBraff` that would otherwise fit.
+ *
+ * This is a heuristic, not a guarantee. An X handle shaped exactly like a share code (`@Z3roCool`)
+ * is shadowed and has to be reached via `/_/x/Z3roCool`. That trade is worth it: pasting a TikTok
+ * share link is common, and an X handle in this precise shape is rare.
+ */
+const isTikTokShareCode = (segment: string): boolean =>
+  /^Z[A-Za-z0-9]{7,15}$/.test(segment) &&
+  /\d/.test(segment) &&
+  /[a-z]/.test(segment) &&
+  /[A-Z]/.test(segment.slice(1));
+
 const segmentsOf = (pathname: string): string[] => pathname.split('/').filter(Boolean);
 
 /**
@@ -173,6 +191,13 @@ export const identifyRealm = (url: URL): RealmMatch => {
   /* --- TikTok short link: /t/:code. Shadows the X profile @t, which /_/x/t still reaches. --- */
   if (segments[0] === 't' && segments.length === 2 && SHORTCODE.test(segments[1])) {
     return { realm: 'tiktok', path: pathname };
+  }
+
+  /* --- TikTok share link with no prefix at all: vm.tiktok.com/ZN88mCDeg --- */
+  if (segments.length === 1 && isTikTokShareCode(segments[0])) {
+    /* Rewrite onto the router's existing /t/:id route rather than adding a bare-code route that
+       would sit alongside the X profile route and be ambiguous there instead. */
+    return { realm: 'tiktok', path: `/t/${segments[0]}` };
   }
 
   /* --- Instagram: /p/:code, /reel/:code, /reels/:code, /tv/:code --- */
