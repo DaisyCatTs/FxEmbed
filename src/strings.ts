@@ -228,6 +228,9 @@ This may be caused by API downtime or a new bug. Try again in a little while." p
      often enough to send people hunting for a bug that isn't there. */
   ERROR_TWEET_NEEDS_LOGIN: `Sorry, we can't load that post. It may be age-restricted, private, or deleted — this instance isn't signed in to X, so it can't tell which :(`,
   ERROR_BLUESKY_UNAVAILABLE: `We couldn't load this post from Bluesky. Try again in a moment or check https://status.bsky.app for updates.`,
+  /* The Mastodon instance is whatever the link said it was, so a bad one is a bad link rather than
+     an upstream outage. Naming the expected shape is the fastest route to a working URL. */
+  ERROR_MASTODON_BAD_INSTANCE: `That doesn't look like a Mastodon instance. Links need the instance in them, like /mastodon/mastodon.social/109327927044751780 :(`,
   ERROR_USER_NOT_FOUND: `Sorry, that user doesn't exist :(`,
   ERROR_USER_SUSPENDED: `Sorry, that user is suspended :(`,
   ERROR_UNKNOWN: `Unknown error occurred, sorry about that :(`,

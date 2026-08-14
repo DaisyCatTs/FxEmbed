@@ -1,6 +1,5 @@
 import { Env, Hono } from 'hono';
 import { timing } from 'hono/timing';
-import { logger } from 'hono/logger';
 import { sentry } from '@hono/sentry';
 import { ContentfulStatusCode } from 'hono/utils/http-status';
 import { rewriteFramesIntegration } from 'toucan-js';
@@ -72,7 +71,10 @@ import { atmosphere } from './realms/atmosphere/router';
 import { getBranding } from './helpers/branding';
 import { tiktok } from './realms/tiktok/router';
 import { instagram } from './realms/instagram/router';
+import { mastodon } from './realms/mastodon/router';
+import { threads } from './realms/threads/router';
 import { identifyRealm } from './routing/identify';
+import { createRequestLogger, redactUrl, type RequestLogger } from './observability';
 import { mediaOptions, mediaRequest } from './media/endpoint';
 import { mediaSigningKey } from './media/key';
 import { mintMediaUrl } from './media/mint';
@@ -95,6 +97,7 @@ const embeddingClientRegex =
 
    * Under the old system with itty-router, this was not the case, but it is since adopting Hono. This will be necessary for FxTwitter API v2. */
 export const app = new Hono<{
+  Variables: { log: RequestLogger };
   Bindings: {
     /** Optional: tests use a Fetcher mock; production uses in-process proxy + CREDENTIAL_KEY. */
     TwitterProxy?: Fetcher;
@@ -187,37 +190,48 @@ app.onError((err, c) => {
   );
 });
 
-const customLogger = (message: string, ...rest: string[]) => {
-  console.log(message, ...rest);
-};
-
-app.use('*', logger(customLogger));
-
+/**
+ * One structured summary line per request.
+ *
+ * This replaces a block of prose logging — colo banners, emoji, the client IP and full user agent
+ * on every request — which read well live in `wrangler tail` and was unusable afterwards. With no
+ * Sentry DSN and no exception webhook configured, these logs are the only account of what
+ * production actually did, so they are emitted as single-line JSON that Logpush and
+ * `wrangler tail --format json` can filter on.
+ *
+ * The client IP and raw user agent are deliberately not logged: they identify visitors, they were
+ * never used to debug anything, and an embed service has no reason to retain them. The client
+ * *family* (discord/telegram/bot/human) is kept, which is the part that ever mattered.
+ */
 app.use('*', async (c, next) => {
-  if (c.req.raw.cf) {
-    const cf = c.req.raw.cf;
-    console.log(`Hello from ⛅ ${cf.colo ?? 'UNK'}`);
-    console.log(
-      `📶 ${cf.httpProtocol ?? 'Unknown HTTP Protocol'} 🏓 ${cf.clientTcpRtt ?? 'N/A'} ms RTT 🔒 ${
-        cf.tlsVersion ?? 'Unencrypted Connection'
-      } (${cf.tlsCipher ?? ''})`
-    );
-    console.log(
-      `🗺️  ${cf.city ?? 'Unknown City'}, ${cf.regionCode ? cf.regionCode + ', ' : ''}${
-        cf.country ?? 'Unknown Country'
-      } ${cf.isEUCountry ? '(EU)' : ''}`
-    );
-    console.log(
-      `🌐 ${c.req.header('x-real-ip') ?? ''} (${cf.asn ? 'AS' + cf.asn : 'Unknown ASN'}, ${
-        cf.asOrganization ?? 'Unknown Organization'
-      })`
-    );
-  } else {
-    console.log(`🌐 ${c.req.header('x-real-ip') ?? ''}`);
+  const log = createRequestLogger(c.req.raw);
+  c.set('log', log);
+
+  /* Correlate a user-reported broken embed with its log line. */
+  c.header('x-request-id', log.rid);
+
+  const cf = c.req.raw.cf;
+  log.set({
+    colo: typeof cf?.colo === 'string' ? cf.colo : undefined,
+    country: typeof cf?.country === 'string' ? cf.country : undefined
+  });
+
+  try {
+    await next();
+    log.finish({
+      status: c.res?.status,
+      outcome: (c.res?.status ?? 500) < 400 ? 'ok' : 'upstream_error',
+      path: redactUrl(c.req.url)
+    });
+  } catch (error) {
+    /* Re-thrown so app.onError still renders the error page; this only records it. */
+    log.error('unhandled', {
+      outcome: 'error',
+      path: redactUrl(c.req.url),
+      message: error instanceof Error ? error.message : String(error)
+    });
+    throw error;
   }
-  console.log('🕵️‍♂️', c.req.header('user-agent'));
-  console.log('------------------');
-  await next();
 });
 
 app.use('*', cacheMiddleware());
@@ -230,6 +244,8 @@ app.route(`/twitter`, twitter);
 app.route(`/bluesky`, bluesky);
 app.route(`/tiktok`, tiktok);
 app.route(`/instagram`, instagram);
+app.route(`/mastodon`, mastodon);
+app.route(`/threads`, threads);
 
 /* Signed media, reached as /_/m/:token/:name — see src/routing/identify.ts for the rewrite. */
 app.get(`/media/:token`, mediaRequest);

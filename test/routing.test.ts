@@ -32,7 +32,16 @@ describe('mirror shapes (paste the post URL, swap the domain)', () => {
     ['/p/CexampleShort', 'instagram'],
     ['/reel/CexampleShort', 'instagram'],
     ['/reels/CexampleShort', 'instagram'],
-    ['/tv/CexampleShort', 'instagram']
+    ['/tv/CexampleShort', 'instagram'],
+
+    /* Threads. TikTok owns /@handle/video/:id, so the literal `post` segment is the whole
+       difference between the two. */
+    ['/@someuser/post/DXhZAMkljvS', 'threads'],
+    ['/@some.user/post/DXhZAMkljvS', 'threads'],
+
+    /* Mastodon has no mirror shape — the instance has to be named, so the path names it. */
+    ['/mastodon/mastodon.social/109327927044751780', 'mastodon'],
+    ['/mastodon/mastodon.social/@Gargron/109327927044751780', 'mastodon']
   ];
 
   test.each(cases)('%s -> %s', (path, realm) => {
@@ -49,6 +58,20 @@ describe('explicit prefixes', () => {
     ['/_/tiktok/@user/video/123', 'tiktok', '/@user/video/123'],
     ['/_/ig/p/Cexample', 'instagram', '/p/Cexample'],
     ['/_/instagram/p/Cexample', 'instagram', '/p/Cexample'],
+    ['/_/threads/@user/post/DXhZAMkljvS', 'threads', '/@user/post/DXhZAMkljvS'],
+    ['/_/threads/post/DXhZAMkljvS', 'threads', '/post/DXhZAMkljvS'],
+    /* The introducer is stripped either way, so the realm router sees one shape whether the
+       request arrived bare or explicit. */
+    [
+      '/_/mastodon/mastodon.social/109327927044751780',
+      'mastodon',
+      '/mastodon.social/109327927044751780'
+    ],
+    [
+      '/_/masto/mastodon.social/109327927044751780',
+      'mastodon',
+      '/mastodon.social/109327927044751780'
+    ],
     ['/_/api/2/status/20', 'api', '/2/status/20'],
     ['/_/blueskyapi/2/status/a/b', 'blueskyapi', '/2/status/a/b'],
     ['/_/atmosphere/2/openapi.json', 'atmosphere', '/2/openapi.json'],
@@ -75,10 +98,12 @@ describe('explicit prefixes', () => {
   });
 
   test('the media namespace does not swallow neighbouring paths', () => {
-    /* `/_/m` is exact; `/_/media` and `/_/mastodon` are not the media endpoint, and neither is a
-       handle beginning with m. */
-    expect(realmOf('/_/mastodon/@a/1')).toEqual('twitter');
+    /* `/_/m` is exact, so it claims neither `/_/media` nor the Mastodon prefixes that share its
+       first letter. `/_/mastodon` and `/_/masto` are their own realm; `/_/media` is nobody's. */
     expect(realmOf('/_/media/token')).toEqual('twitter');
+    expect(realmOf('/_/m/token')).toEqual('media');
+    expect(realmOf('/_/mastodon/mastodon.social/109327927044751780')).toEqual('mastodon');
+    expect(realmOf('/_/masto/mastodon.social/109327927044751780')).toEqual('mastodon');
   });
 
   test('an explicit prefix reaches a handle that a mirror shape shadows', () => {
@@ -120,6 +145,8 @@ describe('collisions resolve to the right provider', () => {
     expect(realmOf('/oembed?text=a&provider=tiktok')).toEqual('tiktok');
     expect(realmOf('/owoembed?text=a')).toEqual('twitter');
     expect(realmOf('/owoembed?text=a&provider=nonsense')).toEqual('twitter');
+    expect(realmOf('/owoembed?text=a&provider=mastodon')).toEqual('mastodon');
+    expect(realmOf('/owoembed?text=a&provider=threads')).toEqual('threads');
   });
 
   test('a three-segment path beginning /p or /t stays with X', () => {
@@ -156,6 +183,56 @@ describe('collisions resolve to the right provider', () => {
     expect(realmOf('/@someuser/video/7234567890123456789')).toEqual('tiktok');
   });
 
+  test('@handle paths split between TikTok, Threads and X by their middle segment', () => {
+    /* The three providers all reach for `/@handle/…`, and only the segment after the handle tells
+       them apart: `video` is TikTok, `post` is Threads, and anything else is nobody's mirror
+       shape and falls back to X. This is the sharpest collision in the table. */
+    expect(realmOf('/@someuser/video/7234567890123456789')).toEqual('tiktok');
+    expect(realmOf('/@someuser/post/DXhZAMkljvS')).toEqual('threads');
+    expect(realmOf('/@someuser/status/20')).toEqual('twitter');
+    expect(realmOf('/@someuser')).toEqual('twitter');
+  });
+
+  test('Threads and TikTok do not steal each other id shapes', () => {
+    /* A Threads shortcode is not numeric and a TikTok video id is, but neither realm is chosen by
+       the id — the literal segment decides, so a TikTok-shaped id under /post/ is still Threads. */
+    expect(realmOf('/@someuser/post/7234567890123456789')).toEqual('threads');
+    /* …and a Threads-shaped code under /video/ is not TikTok, because TikTok ids are numeric. */
+    expect(realmOf('/@someuser/video/DXhZAMkljvS')).toEqual('twitter');
+  });
+
+  test('a Threads post path must be exactly three segments', () => {
+    expect(realmOf('/@someuser/post/DXhZAMkljvS/extra')).toEqual('twitter');
+    expect(realmOf('/@someuser/post')).toEqual('twitter');
+  });
+
+  test('an X account called "mastodon" can still post', () => {
+    /* `mastodon` is a legal X handle, so the introducer only claims the path when the segment
+       after it could actually be an instance — which `status`/`statuses` never can, having no
+       dot. @mastodon's own posts stay on X. */
+    expect(realmOf('/mastodon/status/20')).toEqual('twitter');
+    expect(realmOf('/mastodon/statuses/20')).toEqual('twitter');
+    expect(realmOf('/mastodon')).toEqual('twitter');
+    expect(realmOf('/mastodon/article/20')).toEqual('twitter');
+  });
+
+  test('a Mastodon path without a plausible instance is not Mastodon', () => {
+    /* This is routing, not security — `assertSafeMastodonDomain` is what actually decides whether
+       a host may be fetched. It only has to be tight enough to leave X's shapes alone. */
+    expect(realmOf('/mastodon/notahost/109327927044751780')).toEqual('twitter');
+    expect(realmOf('/mastodon/mastodon.social')).toEqual('twitter');
+    expect(realmOf('/mastodon/mastodon.social/109327927044751780/extra/bits')).toEqual('twitter');
+  });
+
+  test('the Mastodon introducer is stripped from the path it hands on', () => {
+    expect(pathOf('/mastodon/mastodon.social/109327927044751780')).toEqual(
+      '/mastodon.social/109327927044751780'
+    );
+    expect(pathOf('/mastodon/mastodon.social/@Gargron/109327927044751780')).toEqual(
+      '/mastodon.social/@Gargron/109327927044751780'
+    );
+  });
+
   test('a TikTok path without a numeric id is not TikTok', () => {
     expect(realmOf('/@someuser/video/notanid')).toEqual('twitter');
   });
@@ -175,6 +252,8 @@ describe('activity endpoint carries its provider', () => {
     ['b', 'bluesky'],
     ['k', 'tiktok'],
     ['i', 'instagram'],
+    ['m', 'mastodon'],
+    ['s', 'threads'],
     ['t', 'twitter']
   ] as ReadonlyArray<[string, RealmName]>)('marker %s -> %s', (marker, realm) => {
     expect(realmOf(activityPath({ i: '20', v: marker }))).toEqual(realm);

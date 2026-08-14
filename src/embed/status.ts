@@ -32,6 +32,9 @@ import { normalizeLanguage } from '../helpers/language';
 import { getVideoTranscodeDomain, getVideoTranscodeDomainBluesky } from '../helpers/transcode';
 import { constructTikTokVideo } from '@fxembed/atmosphere/providers/tiktok/conversation';
 import { constructInstagramPost } from '@fxembed/atmosphere/providers/instagram/post';
+import { constructMastodonThread } from '@fxembed/atmosphere/providers/mastodon/conversation';
+import { mastodonBuildHostFromContext } from '../providers/mastodon/build-host-adapter';
+import { constructThreadsPost } from '@fxembed/atmosphere/providers/threads/post';
 import { InputFlags } from '../types/types';
 import { formatRuntime } from '../helpers/runtime';
 import { ERROR_CACHE_CONTROL } from '../caches';
@@ -168,6 +171,20 @@ export const handleStatus = async (
     thread = await constructTikTokVideo(statusId, proxyBase, userAgent);
   } else if (provider === DataProvider.Instagram) {
     thread = (await constructInstagramPost(statusId, userAgent)) as SocialThread;
+  } else if (provider === DataProvider.Mastodon) {
+    /* `authorHandle` carries the instance hostname here — Mastodon needs a host as well as an id
+       to resolve a status, the way Bluesky needs the author's DID. The host has already been
+       through `assertSafeMastodonDomain` in the route, and goes through it again inside the
+       client on the way out; nothing here re-implements that check. */
+    thread = (await constructMastodonThread(
+      statusId,
+      authorHandle ?? '',
+      fetchWithThreads,
+      mastodonBuildHostFromContext(c),
+      useActivity ? undefined : useLanguage
+    )) as SocialThread;
+  } else if (provider === DataProvider.Threads) {
+    thread = await constructThreadsPost(statusId, userAgent);
   } else {
     return returnError(c, Strings.ERROR_API_FAIL);
   }
@@ -218,6 +235,13 @@ export const handleStatus = async (
       return returnError(
         c,
         thread.code === 404 ? Strings.ERROR_TWEET_NOT_FOUND : Strings.ERROR_BLUESKY_UNAVAILABLE
+      );
+    } else if (provider === DataProvider.Mastodon || provider === DataProvider.Threads) {
+      /* Neither provider needs credentials, so a miss here really is a miss — say so plainly
+         instead of borrowing X's "we cannot tell whether you need to log in" wording. */
+      return returnError(
+        c,
+        thread.code === 404 ? Strings.ERROR_TWEET_NOT_FOUND : Strings.ERROR_API_FAIL
       );
     } else {
       /* Without credentials, X answers with the same tombstone for a deleted post and for one it
@@ -399,6 +423,10 @@ export const handleStatus = async (
     : `${Constants.BLUESKY_ROOT}/profile/${status.author.screen_name}/post/${status.id}`;
   const instagramPublicStatusUrl =
     status.url || `${Constants.INSTAGRAM_ROOT}/p/${encodeURIComponent(status.id)}/`;
+  /* Mastodon and Threads permalinks can only come from upstream: a Mastodon status lives on
+     whichever instance served it, and a Threads permalink embeds the author's handle. Both
+     processors already put the canonical URL on the status, so there is nothing to rebuild. */
+  const upstreamStatusUrl = status.url ?? null;
 
   /* Emit the canonical/og:url pair only when the URL is a well-formed https URL. A malformed one
      used to be interpolated straight into href="..." / content="...". */
@@ -422,6 +450,13 @@ export const handleStatus = async (
     pushCanonical(bskyPublicStatusUrl);
   } else if (status.provider === DataProvider.Instagram) {
     pushCanonical(instagramPublicStatusUrl);
+  } else if (
+    status.provider === DataProvider.Mastodon ||
+    status.provider === DataProvider.Threads
+  ) {
+    if (upstreamStatusUrl) {
+      pushCanonical(upstreamStatusUrl);
+    }
   }
 
   if (!flags.gallery) {
@@ -444,7 +479,9 @@ export const handleStatus = async (
           ? bskyPublicStatusUrl
           : provider === DataProvider.Instagram
             ? instagramPublicStatusUrl
-            : null;
+            : provider === DataProvider.Mastodon || provider === DataProvider.Threads
+              ? upstreamStatusUrl
+              : null;
     const safeRefreshTarget = refreshTarget ? safeMetaUrl(refreshTarget) : null;
     if (safeRefreshTarget) {
       headers.push({ httpEquiv: 'refresh', content: `0;url=${safeRefreshTarget}` });
@@ -809,7 +846,9 @@ export const handleStatus = async (
     }
 
     let provider = '';
-    const mediaType = overrideMedia ?? (status as APITwitterStatus).media.videos?.[0]?.type;
+    /* `media` is optional on the shared status shape and genuinely absent for some providers, so
+       this reads through it rather than assuming X's always-present object. */
+    const mediaType = overrideMedia ?? (status as APITwitterStatus).media?.videos?.[0]?.type;
     const branding = getBranding(c);
 
     if (mediaType === 'gif') {
@@ -898,6 +937,12 @@ export const handleStatus = async (
       if (blueskyActivityPdsOut?.pdsHostHint) {
         data.p = blueskyActivityPdsOut.pdsHostHint;
       }
+    }
+    if (status.provider === DataProvider.Mastodon && authorHandle) {
+      /* The activity request arrives as a bare snowcode with no path context, so the instance has
+         to travel inside it — an id alone does not identify a fediverse status. `h` is the same
+         slot Bluesky uses for the second half of its identifier. */
+      data.h = authorHandle;
     }
     if (flags.textOnly) {
       data.t = 1;

@@ -18,6 +18,10 @@ import { shouldTranscodeGif } from '../helpers/giftranscode';
 import { normalizeLanguage } from '../helpers/language';
 import { constructTikTokVideo } from '@fxembed/atmosphere/providers/tiktok/conversation';
 import { constructInstagramPost } from '@fxembed/atmosphere/providers/instagram/post';
+import { constructMastodonThread } from '@fxembed/atmosphere/providers/mastodon/conversation';
+import { mastodonBuildHostFromContext } from '../providers/mastodon/build-host-adapter';
+import { constructThreadsPost } from '@fxembed/atmosphere/providers/threads/post';
+import { THREADS_WEB_ROOT } from '../providers/threads/web';
 import { renderArticleToHtml, DISCORD_ARTICLE_MAX_LENGTH } from '../helpers/article';
 import {
   facetUtf16RangeOnPlainText,
@@ -304,9 +308,37 @@ const getStatusText = (status: APIStatus): StatusTextResult => {
   return { text, articleMedia: [] };
 };
 
+/**
+ * The instance a Mastodon status came from, taken from the author's own profile URL.
+ *
+ * There is no fixed web root for the fediverse — every account lives on its own instance — so
+ * mention and hashtag links have to be built against whichever one served this status. Returns
+ * null rather than guessing when the URL is missing or not https, which drops the linkification
+ * instead of emitting a link to nowhere.
+ */
+const mastodonOrigin = (status: APIStatus): string | null => {
+  try {
+    const parsed = new URL(status.author?.url ?? '');
+    return parsed.protocol === 'https:' ? parsed.origin : null;
+  } catch {
+    return null;
+  }
+};
+
 const linkifyMentions = (text: string, status: APIStatus) => {
   let baseUrl = '';
   switch (status.provider) {
+    case DataProvider.Mastodon: {
+      const origin = mastodonOrigin(status);
+      if (!origin) {
+        return text;
+      }
+      baseUrl = `${origin}/@`;
+      break;
+    }
+    case DataProvider.Threads:
+      baseUrl = `${THREADS_WEB_ROOT}/@`;
+      break;
     case DataProvider.Bluesky:
       baseUrl = `${Constants.BLUESKY_ROOT}/profile/`;
       break;
@@ -337,6 +369,19 @@ const linkifyMentions = (text: string, status: APIStatus) => {
 const linkifyHashtags = (text: string, status: APIStatus) => {
   let baseUrl = '';
   switch (status.provider) {
+    case DataProvider.Mastodon: {
+      const origin = mastodonOrigin(status);
+      if (!origin) {
+        return text;
+      }
+      baseUrl = `${origin}/tags`;
+      break;
+    }
+    /* Threads has no path-shaped hashtag URL — its tag search is a query string, which does not
+       fit the `${base}/${tag}` join every other provider uses. Leaving the tag as plain text is
+       better than emitting a link that 404s. */
+    case DataProvider.Threads:
+      return text;
     case DataProvider.Bluesky:
       baseUrl = `${Constants.BLUESKY_ROOT}/hashtag`;
       break;
@@ -414,6 +459,19 @@ const formatStatus = (text: string, status: APIStatus) => {
         baseHashtagUrl = `${Constants.INSTAGRAM_ROOT}/explore/tags`;
         baseSymbolUrl = `${Constants.INSTAGRAM_ROOT}/explore/tags`;
         baseMentionUrl = `${Constants.INSTAGRAM_ROOT}/`;
+        break;
+      case DataProvider.Mastodon: {
+        /* Per-instance, so an unusable author URL leaves these empty and the facet renders as
+           plain text rather than as a link to a host we invented. */
+        const origin = mastodonOrigin(status);
+        if (origin) {
+          baseHashtagUrl = `${origin}/tags`;
+          baseMentionUrl = `${origin}/@`;
+        }
+        break;
+      }
+      case DataProvider.Threads:
+        baseMentionUrl = `${THREADS_WEB_ROOT}/@`;
         break;
     }
     let offset = 0;
@@ -540,6 +598,21 @@ export const handleActivity = async (
     thread = await constructTikTokVideo(statusId, proxyBase);
   } else if (provider === DataProvider.Instagram) {
     thread = (await constructInstagramPost(statusId, c.req.header('User-Agent'))) as SocialThread;
+  } else if (provider === DataProvider.Mastodon) {
+    /* The instance travelled in the snowcode's `h` slot — see src/embed/status.ts. A status id on
+       its own does not identify a fediverse post, so without it there is nothing to fetch. */
+    if (!authorHandle) {
+      return returnError(c, Strings.ERROR_MASTODON_BAD_INSTANCE);
+    }
+    thread = (await constructMastodonThread(
+      statusId,
+      authorHandle,
+      false,
+      mastodonBuildHostFromContext(c),
+      language ?? undefined
+    )) as SocialThread;
+  } else if (provider === DataProvider.Threads) {
+    thread = await constructThreadsPost(statusId, c.req.header('User-Agent'));
   } else {
     return returnError(c, Strings.ERROR_API_FAIL);
   }

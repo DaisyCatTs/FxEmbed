@@ -18,7 +18,16 @@ import { decodeSnowcode } from '../helpers/snowcode';
  */
 
 export type RealmName =
-  'twitter' | 'bluesky' | 'tiktok' | 'instagram' | 'api' | 'blueskyapi' | 'atmosphere' | 'media';
+  | 'twitter'
+  | 'bluesky'
+  | 'tiktok'
+  | 'instagram'
+  | 'mastodon'
+  | 'threads'
+  | 'api'
+  | 'blueskyapi'
+  | 'atmosphere'
+  | 'media';
 
 export type RealmMatch = {
   realm: RealmName;
@@ -40,7 +49,11 @@ export const SNOWCODE_PROVIDER_VALUES: Record<string, RealmName> = {
   t: 'twitter',
   b: 'bluesky',
   k: 'tiktok',
-  i: 'instagram'
+  i: 'instagram',
+  m: 'mastodon',
+  /* `t` was already spent on Twitter when these markers were minted, so Threads takes `s`. The
+     letters are opaque tokens, not initials — what matters is that they never change meaning. */
+  s: 'threads'
 };
 
 /**
@@ -52,7 +65,9 @@ export const SNOWCODE_PROVIDER_VALUES: Record<string, RealmName> = {
 export const ACTIVITY_PROVIDER_MARKERS: Record<string, string> = {
   bluesky: 'b',
   tiktok: 'k',
-  instagram: 'i'
+  instagram: 'i',
+  mastodon: 'm',
+  threads: 's'
 };
 
 /**
@@ -72,6 +87,9 @@ const EXPLICIT_PREFIXES: ReadonlyArray<readonly [string, RealmName]> = [
   ['/_/tiktok', 'tiktok'],
   ['/_/ig', 'instagram'],
   ['/_/instagram', 'instagram'],
+  ['/_/mastodon', 'mastodon'],
+  ['/_/masto', 'mastodon'],
+  ['/_/threads', 'threads'],
   ['/_/api', 'api'],
   ['/_/blueskyapi', 'blueskyapi'],
   ['/_/atmosphere', 'atmosphere'],
@@ -92,7 +110,9 @@ const OEMBED_PROVIDER_REALMS: Record<string, RealmName> = {
   twitter: 'twitter',
   bluesky: 'bluesky',
   tiktok: 'tiktok',
-  instagram: 'instagram'
+  instagram: 'instagram',
+  mastodon: 'mastodon',
+  threads: 'threads'
 };
 
 /** A TikTok or Threads handle segment is `@`-prefixed; an X handle can never contain `@`. */
@@ -100,6 +120,24 @@ const AT_HANDLE = /^@[\w.-]{1,30}$/;
 
 const NUMERIC_ID = /^\d{6,25}$/;
 const SHORTCODE = /^[A-Za-z0-9_-]{5,32}$/;
+
+/**
+ * A Mastodon-family status id: a numeric snowflake on Mastodon itself, a base62 flake on
+ * Pleroma/Akkoma/GoToSocial. Deliberately loose — this only has to be tight enough to keep
+ * `/mastodon/status/20` (i.e. the X account @mastodon) out, and the instance host is what
+ * actually gets validated, downstream, by `assertSafeMastodonDomain`.
+ */
+const MASTODON_STATUS_ID = /^[A-Za-z0-9]{1,40}$/;
+
+/**
+ * A plausible instance hostname: at least two dot-separated labels.
+ *
+ * This is a *routing* test, not a security test. It exists so `/mastodon/status/20` stays with X
+ * (`status` has no dot, so it cannot be an instance) — nothing more. Every Mastodon fetch still
+ * goes through `assertSafeMastodonDomain`, which is the only thing standing between a
+ * user-supplied host and an outbound request.
+ */
+const INSTANCE_HOST = /^(?=.{4,253}$)[a-z\d]([a-z\d-]*[a-z\d])?(\.[a-z\d]([a-z\d-]*[a-z\d])?)+$/i;
 
 /**
  * A bare TikTok share code, as produced by `vm.tiktok.com/ZN88mCDeg`.
@@ -168,6 +206,40 @@ export const identifyRealm = (url: URL): RealmMatch => {
   if ((segments[0] === 'owoembed' || segments[0] === 'oembed') && segments.length === 1) {
     const provider = url.searchParams.get('provider') ?? '';
     return { realm: OEMBED_PROVIDER_REALMS[provider] ?? 'twitter', path: pathname };
+  }
+
+  /* --- Mastodon: /mastodon/:instance/:id, and the pasted form /mastodon/:instance/@user/:id ---
+
+     Mastodon is the one provider with no safe mirror shape. Its instance is the very hostname a
+     single-domain deployment collapses, and what remains — `/@user/:id` — is structurally
+     identical to Threads and TikTok. So the instance has to be named in the path, and naming it
+     means the literal `/mastodon/` segment has to be there to introduce it.
+
+     That segment shadows the X handle @mastodon, so the shape is kept narrow: the instance
+     segment must look like a hostname (which `status`/`statuses`/`article` cannot), leaving
+     @mastodon's own posts on X. `/_/x/mastodon/status/20` reaches them regardless. */
+  if (segments[0] === 'mastodon' && segments.length >= 3 && INSTANCE_HOST.test(segments[1] ?? '')) {
+    const tail = segments.slice(2);
+    const looksLikeStatus =
+      tail.length === 1
+        ? MASTODON_STATUS_ID.test(tail[0])
+        : tail.length === 2 && AT_HANDLE.test(tail[0]) && MASTODON_STATUS_ID.test(tail[1]);
+
+    if (looksLikeStatus) {
+      /* Strip the introducer so the realm router sees one shape regardless of whether the
+         request arrived bare or under the explicit `/_/mastodon/` prefix. */
+      return { realm: 'mastodon', path: `/${segments.slice(1).join('/')}` };
+    }
+  }
+
+  /* --- Threads: /@handle/post/:code. TikTok already owns /@handle/video/:id. --- */
+  if (
+    AT_HANDLE.test(segments[0] ?? '') &&
+    segments[1] === 'post' &&
+    SHORTCODE.test(segments[2] ?? '') &&
+    segments.length === 3
+  ) {
+    return { realm: 'threads', path: pathname };
   }
 
   /* --- Bluesky: every /profile/… shape (posts, feeds, the profile itself) --- */
