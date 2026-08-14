@@ -55,7 +55,13 @@ export const TIKTOK_MEDIA_HOSTS = [
   'tiktokcdn-eu.com',
   'tiktokv.com',
   'byteimg.com',
-  'musical.ly'
+  'musical.ly',
+  /* TikTok serves web playback from `v<n>-webapp-prime.tiktok.com`, so the apex genuinely is a
+     media host. It was excluded once on the assumption that tiktok.com was only the site, which
+     made minting reject its own video URLs: the link fell back to the raw CDN, and TikTok's CDN
+     403s a request without the header profile the proxy exists to supply — so videos silently
+     stopped embedding. The signature is the real gate here; this list is defence in depth. */
+  'tiktok.com'
 ] as const;
 
 export const INSTAGRAM_HOSTS = ['instagram.com', 'cdninstagram.com', 'fbcdn.net'] as const;

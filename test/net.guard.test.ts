@@ -97,6 +97,38 @@ describe('checkUrl', () => {
   });
 });
 
+describe('provider media policies accept the hosts those providers actually serve from', () => {
+  /* Regression: the TikTok media allowlist omitted the apex, so `v16-webapp-prime.tiktok.com` was
+     rejected. Minting refused its own video URL, fell back to the raw CDN link, and the video
+     stopped embedding entirely — a tightened allowlist silently breaking delivery rather than
+     failing loudly. */
+  test.each([
+    'https://v16-webapp-prime.tiktok.com/video/tos/no1a/abc.mp4',
+    'https://v19-webapp-prime.tiktok.com/video/tos/useast/abc.mp4',
+    'https://v16.tiktokcdn.com/video/abc.mp4',
+    'https://p16-sign.tiktokcdn-us.com/thumb.jpeg'
+  ])('tiktokMedia accepts %s', url => {
+    expect(checkUrl(url, NetPolicies.tiktokMedia).ok).toBe(true);
+  });
+
+  test.each([
+    'https://pbs.twimg.com/media/abc.jpg',
+    'https://video.twimg.com/tweet_video/abc.mp4'
+  ])('twitterMedia accepts %s', url => {
+    expect(checkUrl(url, NetPolicies.twitterMedia).ok).toBe(true);
+  });
+
+  test('widening for TikTok did not widen anyone else', () => {
+    expect(checkUrl('https://v16-webapp-prime.tiktok.com/a.mp4', NetPolicies.twitterMedia).ok).toBe(
+      false
+    );
+    expect(checkUrl('https://evil.example/a.mp4', NetPolicies.tiktokMedia).ok).toBe(false);
+    expect(checkUrl('https://tiktok.com.evil.example/a.mp4', NetPolicies.tiktokMedia).ok).toBe(
+      false
+    );
+  });
+});
+
 describe('host helpers', () => {
   test('matchesHost is anchored on a dot boundary', () => {
     expect(matchesHost('pbs.twimg.com', 'twimg.com')).toBe(true);
