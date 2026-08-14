@@ -110,6 +110,110 @@ const convertArticleMediaToAttachment = (
   return null;
 };
 
+/* Card/poll text is attacker-controlled upstream data. It is only ever serialized as JSON here, so
+   JSON encoding is the entire escaping story — it must never reach an HTML string. */
+
+/** Rejects non-http(s) card links (`javascript:`, `data:`) before a client can turn them into a link. */
+const safeCardUrl = (url: string | null | undefined): string | null => {
+  if (!url) {
+    return null;
+  }
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.href : null;
+  } catch {
+    return null;
+  }
+};
+
+const cardProviderName = (url: string): string => {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+};
+
+/* Discord never reads our OpenGraph tags for these posts, so Mastodon's preview card is the only
+   place a link preview can come from. */
+const buildActivityCard = (status: APIStatus): ActivityCard | null => {
+  const websiteCard =
+    status.provider === DataProvider.Twitter ? (status as APITwitterStatus).card : undefined;
+  const websiteCardUrl = safeCardUrl(websiteCard?.url);
+
+  if (websiteCard && websiteCardUrl) {
+    return {
+      url: websiteCardUrl,
+      title: websiteCard.title ?? '',
+      description: websiteCard.description ?? '',
+      type: 'link',
+      author_name: '',
+      author_url: '',
+      provider_name: websiteCard.domain?.replace(/^www\./, '') ?? cardProviderName(websiteCardUrl),
+      provider_url: '',
+      html: '',
+      width: websiteCard.image?.width ?? 0,
+      height: websiteCard.image?.height ?? 0,
+      image: safeCardUrl(websiteCard.image?.url),
+      image_description: websiteCard.image?.alt ?? '',
+      embed_url: '',
+      blurhash: null
+    };
+  }
+
+  const external = status.media?.external;
+  const embedUrl = safeCardUrl(external?.url);
+
+  if (external && embedUrl) {
+    /* Player cards (YouTube and friends) carry no title/description bindings upstream, so the embed
+       URL and its thumbnail are all we can honestly hand a client. */
+    return {
+      url: embedUrl,
+      title: '',
+      description: '',
+      type: 'video',
+      author_name: '',
+      author_url: '',
+      provider_name: cardProviderName(embedUrl),
+      provider_url: '',
+      html: '',
+      width: external.width ?? 0,
+      height: external.height ?? 0,
+      image: safeCardUrl(external.thumbnail_url),
+      image_description: '',
+      embed_url: embedUrl,
+      blurhash: null
+    };
+  }
+
+  return null;
+};
+
+const buildActivityPoll = (status: APIStatus, statusId: string): ActivityPoll | null => {
+  const poll = status.poll;
+  if (!poll) {
+    return null;
+  }
+
+  const endsAt = new Date(poll.ends_at);
+  const expiresAt = isNaN(endsAt.getTime()) ? null : endsAt.toISOString();
+
+  return {
+    id: statusId,
+    expires_at: expiresAt,
+    expired: expiresAt !== null && endsAt.getTime() <= Date.now(),
+    /* X polls are single-choice, and an embed request never carries a viewer identity, so the
+       voting fields are constants rather than unknowns. */
+    multiple: false,
+    votes_count: poll.total_votes,
+    voters_count: poll.total_votes,
+    voted: false,
+    own_votes: [],
+    options: poll.choices.map(choice => ({ title: choice.label, votes_count: choice.count })),
+    emojis: []
+  };
+};
+
 const generatePoll = (poll: APIPoll): string => {
   let str = '<blockquote>';
 
@@ -516,8 +620,8 @@ export const handleActivity = async (
     mentions: [],
     tags: [],
     emojis: [],
-    card: null,
-    poll: null
+    card: buildActivityCard(thread.status as APIStatus),
+    poll: buildActivityPoll(thread.status as APIStatus, statusId)
   };
 
   // Convert article media to attachments format

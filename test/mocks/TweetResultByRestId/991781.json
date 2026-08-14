@@ -1,0 +1,114 @@
+{
+  "data": {
+    "tweetResult": {
+      "result": {
+        "__typename": "Tweet",
+        "rest_id": "991781",
+        "core": {
+          "user_results": {
+            "result": {
+              "__typename": "User",
+              "id": "VXNlcjo5OTE3NzA=",
+              "rest_id": "991770",
+              "affiliates_highlighted_label": {},
+              "parody_commentary_fan_label": "None",
+              "is_blue_verified": false,
+              "profile_image_shape": "Circle",
+              "legacy": {
+                "created_at": "Mon Jan 01 00:00:00 +0000 2024",
+                "default_profile": true,
+                "default_profile_image": true,
+                "description": "",
+                "entities": { "description": { "urls": [] } },
+                "fast_followers_count": 0,
+                "favourites_count": 0,
+                "followers_count": 10,
+                "friends_count": 10,
+                "has_custom_timelines": false,
+                "is_translator": false,
+                "listed_count": 0,
+                "location": "",
+                "media_count": 0,
+                "name": "Card Fixture",
+                "normal_followers_count": 10,
+                "pinned_tweet_ids_str": [],
+                "possibly_sensitive": false,
+                "profile_image_url_https": "https://pbs.twimg.com/profile_images/1/normal.jpg",
+                "profile_interstitial_type": "",
+                "screen_name": "cardfixture",
+                "statuses_count": 1,
+                "translator_type": "none",
+                "verified": false,
+                "withheld_in_countries": []
+              },
+              "tipjar_settings": { "is_enabled": false }
+            }
+          }
+        },
+        "unmention_data": {},
+        "edit_control": {
+          "edit_tweet_ids": ["991781"],
+          "editable_until_msecs": "2000000000000",
+          "is_edit_eligible": true,
+          "edits_remaining": "5"
+        },
+        "is_translatable": false,
+        "views": { "state": "Enabled" },
+        "source": "<a href=\"https://mobile.twitter.com\" rel=\"nofollow\">Twitter Web App</a>",
+        "card": {
+          "rest_id": "card://991781",
+          "name": "summary_large_image",
+          "url": "javascript:alert(1)",
+          "legacy": {
+            "binding_values": [
+              {
+                "key": "card_url",
+                "value": { "string_value": "javascript:alert(1)", "type": "STRING" }
+              },
+              {
+                "key": "title",
+                "value": { "string_value": "Click me", "type": "STRING" }
+              },
+              {
+                "key": "summary_photo_image_large",
+                "value": {
+                  "image_value": {
+                    "url": "https://pbs.twimg.com/card_img/991781/bait.jpg?name=800x419",
+                    "width": 800,
+                    "height": 419
+                  },
+                  "type": "IMAGE"
+                }
+              }
+            ]
+          }
+        },
+        "legacy": {
+          "bookmark_count": 0,
+          "bookmarked": false,
+          "created_at": "Mon Jan 01 12:00:00 +0000 2024",
+          "conversation_id_str": "991781",
+          "display_text_range": [0, 8],
+          "entities": {
+            "hashtags": [],
+            "symbols": [],
+            "timestamps": [],
+            "urls": [],
+            "user_mentions": []
+          },
+          "favorite_count": 0,
+          "favorited": false,
+          "full_text": "click me",
+          "is_quote_status": false,
+          "lang": "en",
+          "quote_count": 0,
+          "reply_count": 0,
+          "retweet_count": 0,
+          "retweeted": false,
+          "user_id_str": "991770",
+          "id_str": "991781"
+        }
+      }
+    }
+  }
+}

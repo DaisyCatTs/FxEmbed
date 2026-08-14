@@ -132,8 +132,44 @@ declare global {
     mentions: [];
     tags: [];
     emojis: [];
-    card: null;
-    poll: null;
+    card: ActivityCard | null;
+    poll: ActivityPoll | null;
+  }
+
+  interface ActivityCard {
+    url: string;
+    title: string;
+    description: string;
+    type: 'link' | 'photo' | 'video' | 'rich';
+    author_name: string;
+    author_url: string;
+    provider_name: string;
+    provider_url: string;
+    html: string;
+    width: number;
+    height: number;
+    image: string | null;
+    image_description: string;
+    embed_url: string;
+    blurhash: string | null;
+  }
+
+  interface ActivityPollOption {
+    title: string;
+    votes_count: number;
+  }
+
+  interface ActivityPoll {
+    id: string;
+    expires_at: string | null;
+    expired: boolean;
+    multiple: boolean;
+    votes_count: number;
+    voters_count: number;
+    voted: boolean;
+    own_votes: [];
+    options: ActivityPollOption[];
+    emojis: [];
   }
 
   interface ActivityAccount {
